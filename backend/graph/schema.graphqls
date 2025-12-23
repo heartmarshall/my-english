@@ -1,0 +1,147 @@
+scalar Time
+
+# ---------------------------------------------------
+# ENUMS (Совпадают с базой данных)
+# ---------------------------------------------------
+
+enum LearningStatus {
+  NEW
+  LEARNING
+  REVIEW
+  MASTERED
+}
+
+enum PartOfSpeech {
+  NOUN
+  VERB
+  ADJECTIVE
+  ADVERB
+  OTHER
+}
+
+enum ExampleSource {
+  FILM
+  BOOK
+  CHAT
+  VIDEO
+  PODCAST
+}
+
+# ---------------------------------------------------
+# TYPES (То, что отдаем на фронт)
+# ---------------------------------------------------
+
+type Word {
+  id: ID!
+  text: String!
+  transcription: String
+  audioUrl: String
+  frequencyRank: Int
+  meanings: [Meaning!]!
+}
+
+type Meaning {
+  id: ID!
+  wordId: ID!
+  partOfSpeech: PartOfSpeech!
+  definitionEn: String
+  translationRu: String!
+  cefrLevel: String
+  imageUrl: String
+  
+  status: LearningStatus!
+  nextReviewAt: Time
+  reviewCount: Int!
+  
+  examples: [Example!]!
+  tags: [Tag!]!
+}
+
+type Example {
+  id: ID!
+  sentenceEn: String!
+  sentenceRu: String
+  sourceName: ExampleSource
+}
+
+type Tag {
+  id: ID!
+  name: String!
+}
+
+type DashboardStats {
+  totalWords: Int!
+  masteredCount: Int!
+  learningCount: Int!
+  dueForReviewCount: Int! 
+}
+
+# ---------------------------------------------------
+# INPUTS (То, что принимаем с фронта)
+# ---------------------------------------------------
+
+input WordFilter {
+  search: String          # Поиск по тексту (LIKE %...%)
+  status: LearningStatus  # Фильтр по статусу (например, показать только New)
+  tags: [String!]         # Фильтр по тегам
+}
+
+# Input для создания нового слова (Complex Mutation)
+# Мы принимаем сразу и слово, и его смысл, и примеры
+input AddWordInput {
+  text: String!
+  transcription: String
+  audioUrl: String
+  meanings: [MeaningInput!]!
+}
+
+input MeaningInput {
+  partOfSpeech: PartOfSpeech!
+  definitionEn: String
+  translationRu: String!
+  imageUrl: String
+  examples: [ExampleInput!]
+  tags: [String!]
+}
+
+input ExampleInput {
+  sentenceEn: String!
+  sentenceRu: String
+  sourceName: String
+}
+
+# ---------------------------------------------------
+# OPERATIONS
+# ---------------------------------------------------
+
+type Query {
+  # Основной список слов (словарь) с пагинацией
+  words(filter: WordFilter, limit: Int = 20, offset: Int = 0): [Word!]!
+  
+  # Детальный просмотр одного слова
+  word(id: ID!): Word
+  
+  # Режим "Учить/Повторять". Возвращает список значений (Meanings),
+  # у которых nextReviewAt < NOW или status = NEW.
+  studyQueue(limit: Int = 10): [Meaning!]!
+  
+  # Дашборд
+  stats: DashboardStats!
+}
+
+type Mutation {
+  # Добавление нового слова со всеми потрохами
+  createWord(input: AddWordInput!): Word!
+  
+  # Обновление слова (исправление опечаток)
+  updateWord(id: ID!, input: AddWordInput!): Word!
+  
+  # Самая важная мутация для прогресса.
+  # Пользователь оценил, как хорошо он помнит слово.
+  # grade: Оценка от 1 (не помню) до 5 (отлично помню).
+  # Бэкенд сам пересчитает nextReviewAt и status.
+  reviewMeaning(meaningId: ID!, grade: Int!): Meaning!
+  
+  # Удаление (например, если добавил по ошибке)
+  deleteWord(id: ID!): Boolean!
+}
