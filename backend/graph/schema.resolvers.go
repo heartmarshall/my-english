@@ -7,47 +7,143 @@ package graph
 
 import (
 	"context"
-	"fmt"
+
+	"github.com/heartmarshall/my-english/internal/database"
+	"github.com/heartmarshall/my-english/internal/transport"
 )
 
 // CreateWord is the resolver for the createWord field.
 func (r *mutationResolver) CreateWord(ctx context.Context, input AddWordInput) (*Word, error) {
-	panic(fmt.Errorf("not implemented: CreateWord - createWord"))
+	result, err := r.words.Create(ctx, ToCreateWordInput(input))
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+	return WordWithRelationsToGraphQL(result), nil
 }
 
 // UpdateWord is the resolver for the updateWord field.
 func (r *mutationResolver) UpdateWord(ctx context.Context, id string, input AddWordInput) (*Word, error) {
-	panic(fmt.Errorf("not implemented: UpdateWord - updateWord"))
+	wordID, err := FromGraphQLID(id)
+	if err != nil {
+		return nil, transport.NewGraphQLError(ctx, "Invalid word ID", transport.CodeInvalidInput)
+	}
+
+	result, err := r.words.Update(ctx, wordID, ToUpdateWordInput(input))
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+	return WordWithRelationsToGraphQL(result), nil
 }
 
 // ReviewMeaning is the resolver for the reviewMeaning field.
 func (r *mutationResolver) ReviewMeaning(ctx context.Context, meaningID string, grade int) (*Meaning, error) {
-	panic(fmt.Errorf("not implemented: ReviewMeaning - reviewMeaning"))
+	mID, err := FromGraphQLID(meaningID)
+	if err != nil {
+		return nil, transport.NewGraphQLError(ctx, "Invalid meaning ID", transport.CodeInvalidInput)
+	}
+
+	meaning, err := r.study.ReviewMeaning(ctx, mID, grade)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+
+	// Загружаем связанные данные
+	examples, err := r.examples.GetByMeaningIDs(ctx, []int64{meaning.ID})
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+
+	tags, err := r.loadTagsForMeaning(ctx, meaning.ID)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+
+	return ToGraphQLMeaning(meaning, ToGraphQLExamples(examples), tags), nil
 }
 
 // DeleteWord is the resolver for the deleteWord field.
 func (r *mutationResolver) DeleteWord(ctx context.Context, id string) (bool, error) {
-	panic(fmt.Errorf("not implemented: DeleteWord - deleteWord"))
+	wordID, err := FromGraphQLID(id)
+	if err != nil {
+		return false, transport.NewGraphQLError(ctx, "Invalid word ID", transport.CodeInvalidInput)
+	}
+
+	if err := r.words.Delete(ctx, wordID); err != nil {
+		return false, transport.HandleError(ctx, err)
+	}
+	return true, nil
 }
 
 // Words is the resolver for the words field.
 func (r *queryResolver) Words(ctx context.Context, filter *WordFilter, limit *int, offset *int) ([]*Word, error) {
-	panic(fmt.Errorf("not implemented: Words - words"))
+	l, o := database.NormalizePagination(ptrToInt(limit), ptrToInt(offset))
+
+	words, err := r.words.List(ctx, ToWordFilter(filter), l, o)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+
+	result := make([]*Word, 0, len(words))
+	for _, w := range words {
+		wordWithRelations, err := r.words.GetByID(ctx, w.ID)
+		if err != nil {
+			return nil, transport.HandleError(ctx, err)
+		}
+		result = append(result, WordWithRelationsToGraphQL(wordWithRelations))
+	}
+
+	return result, nil
 }
 
 // Word is the resolver for the word field.
 func (r *queryResolver) Word(ctx context.Context, id string) (*Word, error) {
-	panic(fmt.Errorf("not implemented: Word - word"))
+	wordID, err := FromGraphQLID(id)
+	if err != nil {
+		return nil, transport.NewGraphQLError(ctx, "Invalid word ID", transport.CodeInvalidInput)
+	}
+
+	wordWithRelations, err := r.words.GetByID(ctx, wordID)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+
+	return WordWithRelationsToGraphQL(wordWithRelations), nil
 }
 
 // StudyQueue is the resolver for the studyQueue field.
 func (r *queryResolver) StudyQueue(ctx context.Context, limit *int) ([]*Meaning, error) {
-	panic(fmt.Errorf("not implemented: StudyQueue - studyQueue"))
+	l := database.NormalizeLimit(ptrToInt(limit), database.DefaultSRSLimit)
+
+	meanings, err := r.study.GetStudyQueue(ctx, l)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+
+	result := make([]*Meaning, 0, len(meanings))
+	for _, m := range meanings {
+		examples, err := r.examples.GetByMeaningIDs(ctx, []int64{m.ID})
+		if err != nil {
+			return nil, transport.HandleError(ctx, err)
+		}
+
+		tags, err := r.loadTagsForMeaning(ctx, m.ID)
+		if err != nil {
+			return nil, transport.HandleError(ctx, err)
+		}
+
+		result = append(result, ToGraphQLMeaning(m, ToGraphQLExamples(examples), tags))
+	}
+
+	return result, nil
 }
 
 // Stats is the resolver for the stats field.
 func (r *queryResolver) Stats(ctx context.Context) (*DashboardStats, error) {
-	panic(fmt.Errorf("not implemented: Stats - stats"))
+	stats, err := r.study.GetStats(ctx)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+	return ToGraphQLStats(stats), nil
 }
 
 // Mutation returns MutationResolver implementation.

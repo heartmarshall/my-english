@@ -1,4 +1,4 @@
-# Where are all the schema files located? globs are supported eg  src/**/*.graphqls
+# Where are all the schema files located?
 schema:
   - graph/schema.graphqls
 
@@ -7,29 +7,27 @@ exec:
   filename: graph/generated.go
   package: graph
 
-# Uncomment to enable federation
-# federation:
-#   filename: graph/federation.go
-#   package: graph
-
 # Where should any generated models go?
 model:
   filename: graph/models_gen.go
   package: graph
 
-# Where should the resolver implementations go?
+# Resolver configuration
 resolver:
   layout: follow-schema
   dir: graph
   package: graph
+  filename_template: "{name}.resolvers.go"
 
-# Optional: turn on use ` + "`" + ` + "`" + `go run github.com/99designs/gqlgen generate` + "`" + ` + "`" + ` to regenerate code
+# Optional: turn on autobind
 autobind:
   - "github.com/heartmarshall/my-english/graph"
 
-# gqlgen will search for any type names in the schema in these packages
-# if they match it will use them, otherwise it will generate them.
+# Map GraphQL types to Go types
 models:
   Time:
     model: github.com/heartmarshall/my-english/graph.Time
-
+  ID:
+    model:
+      - github.com/99designs/gqlgen/graphql.ID
+      - github.com/99designs/gqlgen/graphql.IntID
