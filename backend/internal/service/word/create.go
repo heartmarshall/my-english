@@ -11,6 +11,7 @@ import (
 )
 
 // Create создаёт новое слово со всеми связанными данными.
+// Все операции выполняются в транзакции.
 func (s *Service) Create(ctx context.Context, input CreateWordInput) (*WordWithRelations, error) {
 	// Валидация
 	text := strings.TrimSpace(strings.ToLower(input.Text))
@@ -22,7 +23,7 @@ func (s *Service) Create(ctx context.Context, input CreateWordInput) (*WordWithR
 		return nil, service.ErrInvalidInput
 	}
 
-	// Проверяем, не существует ли слово
+	// Проверяем, не существует ли слово (вне транзакции для быстрого отклонения)
 	_, err := s.words.GetByText(ctx, text)
 	if err == nil {
 		return nil, service.ErrWordAlreadyExists
@@ -31,39 +32,52 @@ func (s *Service) Create(ctx context.Context, input CreateWordInput) (*WordWithR
 		return nil, err
 	}
 
-	// Создаём слово
-	word := &model.Word{
-		Text:          text,
-		Transcription: input.Transcription,
-		AudioURL:      input.AudioURL,
-	}
+	var result *WordWithRelations
 
-	if err := s.words.Create(ctx, word); err != nil {
-		if errors.Is(err, database.ErrDuplicate) {
-			return nil, service.ErrWordAlreadyExists
+	// Выполняем создание в транзакции
+	err = s.txRunner.RunInTx(ctx, func(ctx context.Context, tx database.Querier) error {
+		txRepos := s.withTx(tx)
+
+		// Создаём слово
+		word := &model.Word{
+			Text:          text,
+			Transcription: input.Transcription,
+			AudioURL:      input.AudioURL,
 		}
+
+		if err := txRepos.words.Create(ctx, word); err != nil {
+			if errors.Is(err, database.ErrDuplicate) {
+				return service.ErrWordAlreadyExists
+			}
+			return err
+		}
+
+		// Создаём meanings с примерами и тегами
+		result = &WordWithRelations{
+			Word:     word,
+			Meanings: make([]*MeaningWithRelations, 0, len(input.Meanings)),
+		}
+
+		for _, meaningInput := range input.Meanings {
+			mr, err := s.createMeaningTx(ctx, txRepos, word.ID, meaningInput)
+			if err != nil {
+				return err
+			}
+			result.Meanings = append(result.Meanings, mr)
+		}
+
+		return nil
+	})
+
+	if err != nil {
 		return nil, err
-	}
-
-	// Создаём meanings с примерами и тегами
-	result := &WordWithRelations{
-		Word:     word,
-		Meanings: make([]*MeaningWithRelations, 0, len(input.Meanings)),
-	}
-
-	for _, meaningInput := range input.Meanings {
-		mr, err := s.createMeaning(ctx, word.ID, meaningInput)
-		if err != nil {
-			return nil, err
-		}
-		result.Meanings = append(result.Meanings, mr)
 	}
 
 	return result, nil
 }
 
-// createMeaning создаёт meaning с примерами и тегами.
-func (s *Service) createMeaning(ctx context.Context, wordID int64, input CreateMeaningInput) (*MeaningWithRelations, error) {
+// createMeaningTx создаёт meaning с примерами и тегами в рамках транзакции.
+func (s *Service) createMeaningTx(ctx context.Context, r *repos, wordID int64, input CreateMeaningInput) (*MeaningWithRelations, error) {
 	if input.TranslationRu == "" {
 		return nil, service.ErrInvalidInput
 	}
@@ -78,7 +92,7 @@ func (s *Service) createMeaning(ctx context.Context, wordID int64, input CreateM
 		ImageURL:      input.ImageURL,
 	}
 
-	if err := s.meanings.Create(ctx, meaning); err != nil {
+	if err := r.meanings.Create(ctx, meaning); err != nil {
 		return nil, err
 	}
 
@@ -104,7 +118,7 @@ func (s *Service) createMeaning(ctx context.Context, wordID int64, input CreateM
 		}
 
 		if len(examples) > 0 {
-			if err := s.examples.CreateBatch(ctx, examples); err != nil {
+			if err := r.examples.CreateBatch(ctx, examples); err != nil {
 				return nil, err
 			}
 			result.Examples = examples
@@ -117,7 +131,7 @@ func (s *Service) createMeaning(ctx context.Context, wordID int64, input CreateM
 		tags := make([]*model.Tag, 0, len(input.Tags))
 
 		for _, tagName := range input.Tags {
-			tag, err := s.tags.GetOrCreate(ctx, tagName)
+			tag, err := r.tags.GetOrCreate(ctx, tagName)
 			if err != nil {
 				return nil, err
 			}
@@ -125,7 +139,7 @@ func (s *Service) createMeaning(ctx context.Context, wordID int64, input CreateM
 			tags = append(tags, tag)
 		}
 
-		if err := s.meaningTag.AttachTags(ctx, meaning.ID, tagIDs); err != nil {
+		if err := r.meaningTag.AttachTags(ctx, meaning.ID, tagIDs); err != nil {
 			return nil, err
 		}
 		result.Tags = tags

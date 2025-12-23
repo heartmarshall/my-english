@@ -23,7 +23,7 @@ func (r *Repo) GetDueForReview(ctx context.Context, limit int) ([]*model.Meaning
 		return nil, err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (r *Repo) GetByStatus(ctx context.Context, status model.LearningStatus, lim
 		return nil, err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func (r *Repo) GetStudyQueue(ctx context.Context, limit int) ([]*model.Meaning, 
 		return nil, err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func (r *Repo) GetStats(ctx context.Context) (*model.Stats, error) {
 	`
 
 	var stats model.Stats
-	err := r.q.QueryRowContext(ctx, query,
+	err := r.q.QueryRow(ctx, query,
 		model.LearningStatusMastered,
 		model.LearningStatusLearning,
 		now,
@@ -156,17 +156,12 @@ func (r *Repo) UpdateSRS(ctx context.Context, id int64, srs *SRSUpdate) error {
 		return err
 	}
 
-	result, err := r.q.ExecContext(ctx, query, args...)
+	commandTag, err := r.q.Exec(ctx, query, args...)
 	if err != nil {
 		return err
 	}
 
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if affected == 0 {
+	if commandTag.RowsAffected() == 0 {
 		return database.ErrNotFound
 	}
 

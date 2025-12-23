@@ -16,7 +16,6 @@ func main() {
 		log.Fatalf("Failed to create application: %v", err)
 	}
 
-	// Запускаем
 	if err := application.Run(); err != nil {
 		log.Fatalf("Application error: %v", err)
 	}

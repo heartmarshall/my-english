@@ -1,7 +1,7 @@
 package tag
 
 import (
-	"database/sql"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/model"
@@ -24,7 +24,7 @@ func (r *Repo) scanRow(s database.Scanner) (*model.Tag, error) {
 	}, nil
 }
 
-func (r *Repo) scanRows(rows *sql.Rows) ([]*model.Tag, error) {
+func (r *Repo) scanRows(rows pgx.Rows) ([]*model.Tag, error) {
 	tags := make([]*model.Tag, 0)
 
 	for rows.Next() {

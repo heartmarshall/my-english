@@ -9,37 +9,34 @@ import (
 // Экспортированы для использования в подпакетах (word, meaning, etc.)
 
 // --- Null converters (Go -> SQL) ---
+// Для pgx эти функции просто возвращают указатели напрямую.
 
-// NullString конвертирует *string в sql.NullString.
-func NullString(s *string) sql.NullString {
-	if s == nil {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: *s, Valid: true}
+// NullString возвращает указатель на строку (для pgx).
+// Если s == nil, возвращает nil.
+func NullString(s *string) any {
+	return s
 }
 
-// NullInt конвертирует *int в sql.NullInt64.
-func NullInt(i *int) sql.NullInt64 {
+// NullInt возвращает указатель на int64 (для pgx).
+// Если i == nil, возвращает nil.
+func NullInt(i *int) any {
 	if i == nil {
-		return sql.NullInt64{}
+		return nil
 	}
-	return sql.NullInt64{Int64: int64(*i), Valid: true}
+	val := int64(*i)
+	return &val
 }
 
-// NullFloat конвертирует *float64 в sql.NullFloat64.
-func NullFloat(f *float64) sql.NullFloat64 {
-	if f == nil {
-		return sql.NullFloat64{}
-	}
-	return sql.NullFloat64{Float64: *f, Valid: true}
+// NullFloat возвращает указатель на float64 (для pgx).
+// Если f == nil, возвращает nil.
+func NullFloat(f *float64) any {
+	return f
 }
 
-// NullTime конвертирует *time.Time в sql.NullTime.
-func NullTime(t *time.Time) sql.NullTime {
-	if t == nil {
-		return sql.NullTime{}
-	}
-	return sql.NullTime{Time: *t, Valid: true}
+// NullTime возвращает указатель на time.Time (для pgx).
+// Если t == nil, возвращает nil.
+func NullTime(t *time.Time) any {
+	return t
 }
 
 // --- Ptr converters (SQL -> Go) ---

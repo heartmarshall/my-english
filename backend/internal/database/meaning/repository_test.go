@@ -2,15 +2,15 @@ package meaning_test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
-	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/database/meaning"
 	"github.com/heartmarshall/my-english/internal/database/testutil"
 	"github.com/heartmarshall/my-english/internal/model"
+	"github.com/jackc/pgx/v5"
+	pgxmock "github.com/pashagolub/pgxmock/v2"
 )
 
 var meaningColumns = []string{
@@ -20,9 +20,9 @@ var meaningColumns = []string{
 }
 
 func TestRepo_Create(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
+	q, mock := testutil.NewMockQuerier(t)
 	clock := testutil.NewMockClock()
-	repo := meaning.New(db, meaning.WithClock(clock))
+	repo := meaning.New(q, meaning.WithClock(clock))
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
@@ -49,7 +49,7 @@ func TestRepo_Create(t *testing.T) {
 				clock.Now(),             // created_at
 				clock.Now(),             // updated_at
 			).
-			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
 		err := repo.Create(ctx, m)
 
@@ -108,7 +108,7 @@ func TestRepo_Create(t *testing.T) {
 				nil, nil, model.LearningStatusNew, nil, nil, nil, nil,
 				clock.Now(), clock.Now(),
 			).
-			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
 		err := repo.Create(ctx, m)
 
@@ -123,13 +123,13 @@ func TestRepo_Create(t *testing.T) {
 }
 
 func TestRepo_GetByID(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := meaning.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := meaning.New(q)
 	ctx := context.Background()
 
 	t.Run("found", func(t *testing.T) {
 		now := time.Now()
-		rows := sqlmock.NewRows(meaningColumns).
+		rows := pgxmock.NewRows(meaningColumns).
 			AddRow(1, 1, "noun", "a greeting", "привет", "A1", nil, "new", nil, nil, 2.5, 0, now, now)
 
 		mock.ExpectQuery(`SELECT (.+) FROM meanings WHERE id = \$1`).
@@ -156,7 +156,7 @@ func TestRepo_GetByID(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		mock.ExpectQuery(`SELECT (.+) FROM meanings WHERE id = \$1`).
 			WithArgs(int64(999)).
-			WillReturnError(sql.ErrNoRows)
+			WillReturnError(pgx.ErrNoRows)
 
 		_, err := repo.GetByID(ctx, 999)
 
@@ -168,13 +168,13 @@ func TestRepo_GetByID(t *testing.T) {
 }
 
 func TestRepo_GetByWordID(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := meaning.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := meaning.New(q)
 	ctx := context.Background()
 
 	t.Run("found multiple", func(t *testing.T) {
 		now := time.Now()
-		rows := sqlmock.NewRows(meaningColumns).
+		rows := pgxmock.NewRows(meaningColumns).
 			AddRow(1, 1, "noun", nil, "привет", nil, nil, "new", nil, nil, nil, nil, now, now).
 			AddRow(2, 1, "verb", nil, "приветствовать", nil, nil, "learning", nil, nil, nil, nil, now, now)
 
@@ -194,7 +194,7 @@ func TestRepo_GetByWordID(t *testing.T) {
 	})
 
 	t.Run("empty result", func(t *testing.T) {
-		rows := sqlmock.NewRows(meaningColumns)
+		rows := pgxmock.NewRows(meaningColumns)
 
 		mock.ExpectQuery(`SELECT (.+) FROM meanings WHERE word_id = \$1`).
 			WithArgs(int64(999)).
@@ -216,14 +216,14 @@ func TestRepo_GetByWordID(t *testing.T) {
 }
 
 func TestRepo_Delete(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := meaning.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := meaning.New(q)
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM meanings WHERE id = \$1`).
 			WithArgs(int64(1)).
-			WillReturnResult(sqlmock.NewResult(0, 1))
+			WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
 		err := repo.Delete(ctx, 1)
 
@@ -236,7 +236,7 @@ func TestRepo_Delete(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM meanings WHERE id = \$1`).
 			WithArgs(int64(999)).
-			WillReturnResult(sqlmock.NewResult(0, 0))
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 
 		err := repo.Delete(ctx, 999)
 
@@ -248,14 +248,14 @@ func TestRepo_Delete(t *testing.T) {
 }
 
 func TestRepo_DeleteByWordID(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := meaning.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := meaning.New(q)
 	ctx := context.Background()
 
 	t.Run("deletes multiple", func(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM meanings WHERE word_id = \$1`).
 			WithArgs(int64(1)).
-			WillReturnResult(sqlmock.NewResult(0, 3))
+			WillReturnResult(pgxmock.NewResult("DELETE", 3))
 
 		count, err := repo.DeleteByWordID(ctx, 1)
 
@@ -271,7 +271,7 @@ func TestRepo_DeleteByWordID(t *testing.T) {
 	t.Run("no rows affected", func(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM meanings WHERE word_id = \$1`).
 			WithArgs(int64(999)).
-			WillReturnResult(sqlmock.NewResult(0, 0))
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 
 		count, err := repo.DeleteByWordID(ctx, 999)
 

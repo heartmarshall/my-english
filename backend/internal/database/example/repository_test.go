@@ -2,21 +2,21 @@ package example_test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
-	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/database/example"
 	"github.com/heartmarshall/my-english/internal/database/testutil"
 	"github.com/heartmarshall/my-english/internal/model"
+	"github.com/jackc/pgx/v5"
+	pgxmock "github.com/pashagolub/pgxmock/v2"
 )
 
 var exampleColumns = []string{"id", "meaning_id", "sentence_en", "sentence_ru", "source_name"}
 
 func TestRepo_Create(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := example.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := example.New(q)
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
@@ -30,7 +30,7 @@ func TestRepo_Create(t *testing.T) {
 
 		mock.ExpectQuery(`INSERT INTO examples`).
 			WithArgs(int64(1), "Hello, world!", "Привет, мир!", &src).
-			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
 		err := repo.Create(ctx, ex)
 
@@ -63,12 +63,12 @@ func TestRepo_Create(t *testing.T) {
 }
 
 func TestRepo_GetByID(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := example.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := example.New(q)
 	ctx := context.Background()
 
 	t.Run("found", func(t *testing.T) {
-		rows := sqlmock.NewRows(exampleColumns).
+		rows := pgxmock.NewRows(exampleColumns).
 			AddRow(1, 1, "Hello!", "Привет!", "film")
 
 		mock.ExpectQuery(`SELECT (.+) FROM examples WHERE id = \$1`).
@@ -92,7 +92,7 @@ func TestRepo_GetByID(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		mock.ExpectQuery(`SELECT (.+) FROM examples WHERE id = \$1`).
 			WithArgs(int64(999)).
-			WillReturnError(sql.ErrNoRows)
+			WillReturnError(pgx.ErrNoRows)
 
 		_, err := repo.GetByID(ctx, 999)
 
@@ -104,12 +104,12 @@ func TestRepo_GetByID(t *testing.T) {
 }
 
 func TestRepo_GetByMeaningID(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := example.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := example.New(q)
 	ctx := context.Background()
 
 	t.Run("found multiple", func(t *testing.T) {
-		rows := sqlmock.NewRows(exampleColumns).
+		rows := pgxmock.NewRows(exampleColumns).
 			AddRow(1, 1, "First", nil, nil).
 			AddRow(2, 1, "Second", nil, "book")
 
@@ -129,7 +129,7 @@ func TestRepo_GetByMeaningID(t *testing.T) {
 	})
 
 	t.Run("empty result", func(t *testing.T) {
-		rows := sqlmock.NewRows(exampleColumns)
+		rows := pgxmock.NewRows(exampleColumns)
 
 		mock.ExpectQuery(`SELECT (.+) FROM examples WHERE meaning_id = \$1`).
 			WithArgs(int64(999)).
@@ -148,14 +148,14 @@ func TestRepo_GetByMeaningID(t *testing.T) {
 }
 
 func TestRepo_Delete(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := example.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := example.New(q)
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM examples WHERE id = \$1`).
 			WithArgs(int64(1)).
-			WillReturnResult(sqlmock.NewResult(0, 1))
+			WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
 		err := repo.Delete(ctx, 1)
 
@@ -168,7 +168,7 @@ func TestRepo_Delete(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM examples WHERE id = \$1`).
 			WithArgs(int64(999)).
-			WillReturnResult(sqlmock.NewResult(0, 0))
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 
 		err := repo.Delete(ctx, 999)
 
@@ -180,14 +180,14 @@ func TestRepo_Delete(t *testing.T) {
 }
 
 func TestRepo_DeleteByMeaningID(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := example.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := example.New(q)
 	ctx := context.Background()
 
 	t.Run("deletes multiple", func(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM examples WHERE meaning_id = \$1`).
 			WithArgs(int64(1)).
-			WillReturnResult(sqlmock.NewResult(0, 3))
+			WillReturnResult(pgxmock.NewResult("DELETE", 3))
 
 		count, err := repo.DeleteByMeaningID(ctx, 1)
 

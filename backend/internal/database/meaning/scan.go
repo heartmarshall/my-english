@@ -1,7 +1,9 @@
 package meaning
 
 import (
-	"database/sql"
+	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/heartmarshall/my-english/internal/database"
@@ -14,17 +16,17 @@ func (r *Repo) scanRow(s database.Scanner) (*model.Meaning, error) {
 		id             int64
 		wordID         int64
 		partOfSpeech   string
-		definitionEn   sql.NullString
+		definitionEn   *string
 		translationRu  string
-		cefrLevel      sql.NullString
-		imageURL       sql.NullString
+		cefrLevel      *string
+		imageURL       *string
 		learningStatus string
-		nextReviewAt   sql.NullTime
-		interval       sql.NullInt64
-		easeFactor     sql.NullFloat64
-		reviewCount    sql.NullInt64
-		createdAt      sql.NullTime
-		updatedAt      sql.NullTime
+		nextReviewAt   *time.Time
+		interval       *int
+		easeFactor     *float64
+		reviewCount    *int
+		createdAt      *time.Time
+		updatedAt      *time.Time
 	)
 
 	err := s.Scan(
@@ -40,29 +42,29 @@ func (r *Repo) scanRow(s database.Scanner) (*model.Meaning, error) {
 		ID:             id,
 		WordID:         wordID,
 		PartOfSpeech:   model.PartOfSpeech(partOfSpeech),
-		DefinitionEn:   database.PtrString(definitionEn),
+		DefinitionEn:   definitionEn,
 		TranslationRu:  translationRu,
-		CefrLevel:      database.PtrString(cefrLevel),
-		ImageURL:       database.PtrString(imageURL),
+		CefrLevel:      cefrLevel,
+		ImageURL:       imageURL,
 		LearningStatus: model.LearningStatus(learningStatus),
-		NextReviewAt:   database.PtrTime(nextReviewAt),
-		Interval:       database.PtrInt(interval),
-		EaseFactor:     database.PtrFloat(easeFactor),
-		ReviewCount:    database.PtrInt(reviewCount),
+		NextReviewAt:   nextReviewAt,
+		Interval:       interval,
+		EaseFactor:     easeFactor,
+		ReviewCount:    reviewCount,
 	}
 
-	if createdAt.Valid {
-		m.CreatedAt = createdAt.Time
+	if createdAt != nil {
+		m.CreatedAt = *createdAt
 	}
-	if updatedAt.Valid {
-		m.UpdatedAt = updatedAt.Time
+	if updatedAt != nil {
+		m.UpdatedAt = *updatedAt
 	}
 
 	return m, nil
 }
 
 // scanRows сканирует несколько строк в слайс model.Meaning.
-func (r *Repo) scanRows(rows *sql.Rows) ([]*model.Meaning, error) {
+func (r *Repo) scanRows(rows pgx.Rows) ([]*model.Meaning, error) {
 	meanings := make([]*model.Meaning, 0)
 
 	for rows.Next() {

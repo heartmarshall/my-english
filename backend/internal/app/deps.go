@@ -1,7 +1,7 @@
 package app
 
 import (
-	"database/sql"
+	"context"
 
 	"github.com/heartmarshall/my-english/graph"
 	"github.com/heartmarshall/my-english/internal/database"
@@ -10,9 +10,31 @@ import (
 	"github.com/heartmarshall/my-english/internal/database/meaningtag"
 	"github.com/heartmarshall/my-english/internal/database/tag"
 	"github.com/heartmarshall/my-english/internal/database/word"
+	"github.com/heartmarshall/my-english/internal/service/loader"
 	"github.com/heartmarshall/my-english/internal/service/study"
 	wordservice "github.com/heartmarshall/my-english/internal/service/word"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// TxRunner реализует интерфейс wordservice.TxRunner.
+type TxRunner struct {
+	txManager *database.TxManager
+}
+
+// NewTxRunner создаёт новый TxRunner.
+func NewTxRunner(pool *pgxpool.Pool) *TxRunner {
+	return &TxRunner{
+		txManager: database.NewTxManager(pool),
+	}
+}
+
+// RunInTx выполняет функцию в транзакции.
+func (r *TxRunner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx database.Querier) error) error {
+	return r.txManager.RunInTx(ctx, fn)
+}
+
+// Compile-time check
+var _ wordservice.TxRunner = (*TxRunner)(nil)
 
 // Repositories содержит все репозитории.
 type Repositories struct {
@@ -25,55 +47,62 @@ type Repositories struct {
 
 // Services содержит все сервисы.
 type Services struct {
-	Words *wordservice.Service
-	Study *study.Service
+	Words  *wordservice.Service
+	Study  *study.Service
+	Loader *loader.Service
 }
 
 // Dependencies содержит все зависимости приложения.
 type Dependencies struct {
-	DB           *sql.DB
+	DB           *pgxpool.Pool
 	Repositories *Repositories
 	Services     *Services
 	Resolver     *graph.Resolver
 }
 
 // NewDependencies создаёт все зависимости приложения.
-func NewDependencies(db *sql.DB) *Dependencies {
+func NewDependencies(pool *pgxpool.Pool) *Dependencies {
 	// Репозитории
-	repos := newRepositories(db)
+	repos := newRepositories(pool)
+
+	// TxRunner и RepositoryFactory
+	txRunner := NewTxRunner(pool)
+	repoFactory := NewRepositoryFactory()
 
 	// Сервисы
-	services := newServices(repos)
+	services := newServices(repos, txRunner, repoFactory)
 
-	// GraphQL Resolver
-	resolver := newResolver(services, repos)
+	// GraphQL Resolver (использует только сервисы)
+	resolver := newResolver(services)
 
 	return &Dependencies{
-		DB:           db,
+		DB:           pool,
 		Repositories: repos,
 		Services:     services,
 		Resolver:     resolver,
 	}
 }
 
-func newRepositories(db *sql.DB) *Repositories {
+func newRepositories(pool *pgxpool.Pool) *Repositories {
 	return &Repositories{
-		Words:      word.New(db),
-		Meanings:   meaning.New(db, meaning.WithClock(database.RealClock{})),
-		Examples:   example.New(db),
-		Tags:       tag.New(db),
-		MeaningTag: meaningtag.New(db),
+		Words:      word.New(pool),
+		Meanings:   meaning.New(pool, meaning.WithClock(database.RealClock{})),
+		Examples:   example.New(pool),
+		Tags:       tag.New(pool),
+		MeaningTag: meaningtag.New(pool),
 	}
 }
 
-func newServices(repos *Repositories) *Services {
+func newServices(repos *Repositories, txRunner *TxRunner, repoFactory *RepositoryFactory) *Services {
 	// Word Service
 	wordSvc := wordservice.New(wordservice.Deps{
-		Words:      repos.Words,
-		Meanings:   repos.Meanings,
-		Examples:   repos.Examples,
-		Tags:       repos.Tags,
-		MeaningTag: repos.MeaningTag,
+		Words:       repos.Words,
+		Meanings:    repos.Meanings,
+		Examples:    repos.Examples,
+		Tags:        repos.Tags,
+		MeaningTag:  repos.MeaningTag,
+		TxRunner:    txRunner,
+		RepoFactory: repoFactory,
 	})
 
 	// Study Service — используем SRS адаптер
@@ -84,20 +113,25 @@ func newServices(repos *Repositories) *Services {
 		Clock:    study.RealClock{},
 	})
 
+	// Loader Service для DataLoaders
+	loaderSvc := loader.New(loader.Deps{
+		Meanings:    repos.Meanings,
+		Examples:    repos.Examples,
+		Tags:        repos.Tags,
+		MeaningTags: repos.MeaningTag,
+	})
+
 	return &Services{
-		Words: wordSvc,
-		Study: studySvc,
+		Words:  wordSvc,
+		Study:  studySvc,
+		Loader: loaderSvc,
 	}
 }
 
-func newResolver(services *Services, repos *Repositories) *graph.Resolver {
-	// Используем TagLoader адаптер
-	tagLoader := NewTagLoaderAdapter(repos.Tags, repos.MeaningTag)
-
+func newResolver(services *Services) *graph.Resolver {
+	// Resolver использует только сервисы
 	return graph.NewResolver(graph.Deps{
-		Words:    services.Words,
-		Study:    services.Study,
-		Examples: repos.Examples,
-		Tags:     tagLoader,
+		Words: services.Words,
+		Study: services.Study,
 	})
 }

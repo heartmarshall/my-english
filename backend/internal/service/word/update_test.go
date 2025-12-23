@@ -48,12 +48,27 @@ func TestService_Update(t *testing.T) {
 			},
 		}
 
+		exampleRepo := &mockExampleRepository{}
+		tagRepo := &mockTagRepository{}
+		meaningTagRepo := &mockMeaningTagRepository{}
+
+		txRunner := &mockTxRunner{}
+		repoFactory := &mockRepositoryFactory{
+			wordRepo:       wordRepo,
+			meaningRepo:    meaningRepo,
+			exampleRepo:    exampleRepo,
+			tagRepo:        tagRepo,
+			meaningTagRepo: meaningTagRepo,
+		}
+
 		svc := word.New(word.Deps{
-			Words:      wordRepo,
-			Meanings:   meaningRepo,
-			Examples:   &mockExampleRepository{},
-			Tags:       &mockTagRepository{},
-			MeaningTag: &mockMeaningTagRepository{},
+			Words:       wordRepo,
+			Meanings:    meaningRepo,
+			Examples:    exampleRepo,
+			Tags:        tagRepo,
+			MeaningTag:  meaningTagRepo,
+			TxRunner:    txRunner,
+			RepoFactory: repoFactory,
 		})
 
 		newTranscription := "həˈloʊ"
@@ -137,12 +152,27 @@ func TestService_Update(t *testing.T) {
 			},
 		}
 
+		exampleRepo := &mockExampleRepository{}
+		tagRepo := &mockTagRepository{}
+		meaningTagRepo := &mockMeaningTagRepository{}
+
+		txRunner := &mockTxRunner{}
+		repoFactory := &mockRepositoryFactory{
+			wordRepo:       wordRepo,
+			meaningRepo:    meaningRepo,
+			exampleRepo:    exampleRepo,
+			tagRepo:        tagRepo,
+			meaningTagRepo: meaningTagRepo,
+		}
+
 		svc := word.New(word.Deps{
-			Words:      wordRepo,
-			Meanings:   meaningRepo,
-			Examples:   &mockExampleRepository{},
-			Tags:       &mockTagRepository{},
-			MeaningTag: &mockMeaningTagRepository{},
+			Words:       wordRepo,
+			Meanings:    meaningRepo,
+			Examples:    exampleRepo,
+			Tags:        tagRepo,
+			MeaningTag:  meaningTagRepo,
+			TxRunner:    txRunner,
+			RepoFactory: repoFactory,
 		})
 
 		// Передаём nil для очистки transcription

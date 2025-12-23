@@ -38,8 +38,10 @@ type Config struct {
 }
 
 type ResolverRoot interface {
+	Meaning() MeaningResolver
 	Mutation() MutationResolver
 	Query() QueryResolver
+	Word() WordResolver
 }
 
 type DirectiveRoot struct {
@@ -104,6 +106,10 @@ type ComplexityRoot struct {
 	}
 }
 
+type MeaningResolver interface {
+	Examples(ctx context.Context, obj *Meaning) ([]*Example, error)
+	Tags(ctx context.Context, obj *Meaning) ([]*Tag, error)
+}
 type MutationResolver interface {
 	CreateWord(ctx context.Context, input AddWordInput) (*Word, error)
 	UpdateWord(ctx context.Context, id string, input AddWordInput) (*Word, error)
@@ -115,6 +121,9 @@ type QueryResolver interface {
 	Word(ctx context.Context, id string) (*Word, error)
 	StudyQueue(ctx context.Context, limit *int) ([]*Meaning, error)
 	Stats(ctx context.Context) (*DashboardStats, error)
+}
+type WordResolver interface {
+	Meanings(ctx context.Context, obj *Word) ([]*Meaning, error)
 }
 
 type executableSchema struct {
@@ -1211,7 +1220,7 @@ func (ec *executionContext) _Meaning_examples(ctx context.Context, field graphql
 		field,
 		ec.fieldContext_Meaning_examples,
 		func(ctx context.Context) (any, error) {
-			return obj.Examples, nil
+			return ec.resolvers.Meaning().Examples(ctx, obj)
 		},
 		nil,
 		ec.marshalNExample2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐExampleᚄ,
@@ -1224,8 +1233,8 @@ func (ec *executionContext) fieldContext_Meaning_examples(_ context.Context, fie
 	fc = &graphql.FieldContext{
 		Object:     "Meaning",
 		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "id":
@@ -1250,7 +1259,7 @@ func (ec *executionContext) _Meaning_tags(ctx context.Context, field graphql.Col
 		field,
 		ec.fieldContext_Meaning_tags,
 		func(ctx context.Context) (any, error) {
-			return obj.Tags, nil
+			return ec.resolvers.Meaning().Tags(ctx, obj)
 		},
 		nil,
 		ec.marshalNTag2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTagᚄ,
@@ -1263,8 +1272,8 @@ func (ec *executionContext) fieldContext_Meaning_tags(_ context.Context, field g
 	fc = &graphql.FieldContext{
 		Object:     "Meaning",
 		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "id":
@@ -2030,7 +2039,7 @@ func (ec *executionContext) _Word_meanings(ctx context.Context, field graphql.Co
 		field,
 		ec.fieldContext_Word_meanings,
 		func(ctx context.Context) (any, error) {
-			return obj.Meanings, nil
+			return ec.resolvers.Word().Meanings(ctx, obj)
 		},
 		nil,
 		ec.marshalNMeaning2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐMeaningᚄ,
@@ -2043,8 +2052,8 @@ func (ec *executionContext) fieldContext_Word_meanings(_ context.Context, field 
 	fc = &graphql.FieldContext{
 		Object:     "Word",
 		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "id":
@@ -3840,24 +3849,24 @@ func (ec *executionContext) _Meaning(ctx context.Context, sel ast.SelectionSet, 
 		case "id":
 			out.Values[i] = ec._Meaning_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "wordId":
 			out.Values[i] = ec._Meaning_wordId(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "partOfSpeech":
 			out.Values[i] = ec._Meaning_partOfSpeech(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "definitionEn":
 			out.Values[i] = ec._Meaning_definitionEn(ctx, field, obj)
 		case "translationRu":
 			out.Values[i] = ec._Meaning_translationRu(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "cefrLevel":
 			out.Values[i] = ec._Meaning_cefrLevel(ctx, field, obj)
@@ -3866,25 +3875,87 @@ func (ec *executionContext) _Meaning(ctx context.Context, sel ast.SelectionSet, 
 		case "status":
 			out.Values[i] = ec._Meaning_status(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "nextReviewAt":
 			out.Values[i] = ec._Meaning_nextReviewAt(ctx, field, obj)
 		case "reviewCount":
 			out.Values[i] = ec._Meaning_reviewCount(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "examples":
-			out.Values[i] = ec._Meaning_examples(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Meaning_examples(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "tags":
-			out.Values[i] = ec._Meaning_tags(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Meaning_tags(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -4171,12 +4242,12 @@ func (ec *executionContext) _Word(ctx context.Context, sel ast.SelectionSet, obj
 		case "id":
 			out.Values[i] = ec._Word_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "text":
 			out.Values[i] = ec._Word_text(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "transcription":
 			out.Values[i] = ec._Word_transcription(ctx, field, obj)
@@ -4185,10 +4256,41 @@ func (ec *executionContext) _Word(ctx context.Context, sel ast.SelectionSet, obj
 		case "frequencyRank":
 			out.Values[i] = ec._Word_frequencyRank(ctx, field, obj)
 		case "meanings":
-			out.Values[i] = ec._Word_meanings(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Word_meanings(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}

@@ -4,10 +4,12 @@ package database
 
 import (
 	"context"
-	"database/sql"
 	"time"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Pagination defaults — константы для пагинации.
@@ -17,19 +19,19 @@ const (
 	DefaultSRSLimit = 10  // Лимит по умолчанию для SRS очереди
 )
 
-// Querier — абстракция над *sql.DB и *sql.Tx.
+// Querier — абстракция над pgxpool.Pool и pgx.Tx.
 // Позволяет использовать репозитории как с прямым подключением,
 // так и в рамках транзакции.
 type Querier interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// Compile-time проверки, что *sql.DB и *sql.Tx реализуют Querier.
+// Compile-time проверки, что pgxpool.Pool и pgx.Tx реализуют Querier.
 var (
-	_ Querier = (*sql.DB)(nil)
-	_ Querier = (*sql.Tx)(nil)
+	_ Querier = (*pgxpool.Pool)(nil)
+	_ Querier = (pgx.Tx)(nil)
 )
 
 // Builder — squirrel builder с PostgreSQL плейсхолдерами ($1, $2, ...).
@@ -84,23 +86,23 @@ type TxFunc func(ctx context.Context, q Querier) error
 // WithTx выполняет функцию fn в рамках транзакции.
 // Если fn возвращает ошибку или возникает паника — транзакция откатывается.
 // Иначе — коммитится.
-func WithTx(ctx context.Context, db *sql.DB, fn TxFunc) error {
-	tx, err := db.BeginTx(ctx, nil)
+func WithTx(ctx context.Context, pool *pgxpool.Pool, fn TxFunc) error {
+	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
 		if p := recover(); p != nil {
-			_ = tx.Rollback()
+			_ = tx.Rollback(ctx)
 			panic(p)
 		}
 	}()
 
 	if err := fn(ctx, tx); err != nil {
-		_ = tx.Rollback()
+		_ = tx.Rollback(ctx)
 		return err
 	}
 
-	return tx.Commit()
+	return tx.Commit(ctx)
 }

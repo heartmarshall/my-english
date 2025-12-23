@@ -12,14 +12,16 @@ type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
 	GraphQL  GraphQLConfig
+	Log      LogConfig
 }
 
 // ServerConfig — конфигурация HTTP сервера.
 type ServerConfig struct {
-	Host         string
-	Port         int
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
+	Host           string
+	Port           int
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
+	RequestTimeout time.Duration // Таймаут на обработку запроса
 }
 
 // DatabaseConfig — конфигурация базы данных.
@@ -35,11 +37,11 @@ type DatabaseConfig struct {
 	ConnMaxLifetime time.Duration
 }
 
-// DSN возвращает строку подключения к PostgreSQL.
+// DSN возвращает строку подключения к PostgreSQL в формате URL для pgx.
 func (c DatabaseConfig) DSN() string {
 	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		c.Host, c.Port, c.User, c.Password, c.Database, c.SSLMode,
+		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		c.User, c.Password, c.Host, c.Port, c.Database, c.SSLMode,
 	)
 }
 
@@ -54,10 +56,11 @@ type GraphQLConfig struct {
 func DefaultConfig() Config {
 	return Config{
 		Server: ServerConfig{
-			Host:         "0.0.0.0",
-			Port:         8080,
-			ReadTimeout:  15 * time.Second,
-			WriteTimeout: 15 * time.Second,
+			Host:           "0.0.0.0",
+			Port:           8080,
+			ReadTimeout:    15 * time.Second,
+			WriteTimeout:   15 * time.Second,
+			RequestTimeout: 30 * time.Second,
 		},
 		Database: DatabaseConfig{
 			Host:            "localhost",
@@ -75,6 +78,7 @@ func DefaultConfig() Config {
 			EnableIntrospection: true,
 			QueryCacheSize:      1000,
 		},
+		Log: DefaultLogConfig(),
 	}
 }
 
@@ -90,6 +94,11 @@ func LoadFromEnv() Config {
 	if port := os.Getenv("SERVER_PORT"); port != "" {
 		if p, err := strconv.Atoi(port); err == nil {
 			cfg.Server.Port = p
+		}
+	}
+	if timeout := os.Getenv("SERVER_REQUEST_TIMEOUT"); timeout != "" {
+		if d, err := time.ParseDuration(timeout); err == nil {
+			cfg.Server.RequestTimeout = d
 		}
 	}
 
@@ -121,6 +130,14 @@ func LoadFromEnv() Config {
 	}
 	if env := os.Getenv("GRAPHQL_INTROSPECTION"); env == "false" {
 		cfg.GraphQL.EnableIntrospection = false
+	}
+
+	// Logging
+	if level := os.Getenv("LOG_LEVEL"); level != "" {
+		cfg.Log.Level = LogLevel(level)
+	}
+	if format := os.Getenv("LOG_FORMAT"); format != "" {
+		cfg.Log.Format = format
 	}
 
 	return cfg

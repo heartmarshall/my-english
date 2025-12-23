@@ -3,6 +3,7 @@ package word
 import (
 	"context"
 
+	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/model"
 )
 
@@ -54,9 +55,19 @@ type MeaningTagRepository interface {
 	DetachAllFromMeaning(ctx context.Context, meaningID int64) error
 }
 
-// Transactor определяет интерфейс для работы с транзакциями.
-type Transactor interface {
-	// WithTx выполняет функцию в рамках транзакции.
-	// Если функция возвращает ошибку — транзакция откатывается.
-	WithTx(ctx context.Context, fn func(ctx context.Context) error) error
+// RepositoryFactory создаёт репозитории с указанным Querier.
+// Используется для работы в транзакциях.
+type RepositoryFactory interface {
+	Words(q database.Querier) WordRepository
+	Meanings(q database.Querier) MeaningRepository
+	Examples(q database.Querier) ExampleRepository
+	Tags(q database.Querier) TagRepository
+	MeaningTags(q database.Querier) MeaningTagRepository
+}
+
+// TxRunner определяет интерфейс для запуска транзакций.
+type TxRunner interface {
+	// RunInTx выполняет функцию в рамках транзакции.
+	// Querier передаётся в функцию для создания репозиториев.
+	RunInTx(ctx context.Context, fn func(ctx context.Context, tx database.Querier) error) error
 }

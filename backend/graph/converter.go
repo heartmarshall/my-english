@@ -345,3 +345,52 @@ func MeaningWithRelationsToGraphQL(mr *word.MeaningWithRelations) *Meaning {
 		ToGraphQLTags(mr.Tags),
 	)
 }
+
+// ToGraphQLMeaningBasic конвертирует domain Meaning в GraphQL Meaning без examples и tags.
+// Используется с field resolvers, которые загружают relations через DataLoader.
+func ToGraphQLMeaningBasic(m *model.Meaning) *Meaning {
+	if m == nil {
+		return nil
+	}
+
+	reviewCount := 0
+	if m.ReviewCount != nil {
+		reviewCount = *m.ReviewCount
+	}
+
+	var nextReviewAt *Time
+	if m.NextReviewAt != nil {
+		t := Time(*m.NextReviewAt)
+		nextReviewAt = &t
+	}
+
+	return &Meaning{
+		ID:            ToGraphQLID(m.ID),
+		WordID:        ToGraphQLID(m.WordID),
+		PartOfSpeech:  ToGraphQLPartOfSpeech(m.PartOfSpeech),
+		DefinitionEn:  m.DefinitionEn,
+		TranslationRu: m.TranslationRu,
+		CefrLevel:     m.CefrLevel,
+		ImageURL:      m.ImageURL,
+		Status:        ToGraphQLLearningStatus(m.LearningStatus),
+		NextReviewAt:  nextReviewAt,
+		ReviewCount:   reviewCount,
+		// Examples и Tags загрузятся через field resolvers
+	}
+}
+
+// ToGraphQLWordBasic конвертирует domain Word в GraphQL Word без meanings.
+// Используется с field resolvers, которые загружают meanings через DataLoader.
+func ToGraphQLWordBasic(w *model.Word) *Word {
+	if w == nil {
+		return nil
+	}
+	return &Word{
+		ID:            ToGraphQLID(w.ID),
+		Text:          w.Text,
+		Transcription: w.Transcription,
+		AudioURL:      w.AudioURL,
+		FrequencyRank: w.FrequencyRank,
+		// Meanings загрузятся через field resolver
+	}
+}

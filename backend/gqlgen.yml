@@ -31,3 +31,13 @@ models:
     model:
       - github.com/99designs/gqlgen/graphql.ID
       - github.com/99designs/gqlgen/graphql.IntID
+  Word:
+    fields:
+      meanings:
+        resolver: true
+  Meaning:
+    fields:
+      examples:
+        resolver: true
+      tags:
+        resolver: true

@@ -12,6 +12,36 @@ import (
 	"github.com/heartmarshall/my-english/internal/transport"
 )
 
+// Examples is the resolver for the examples field.
+func (r *meaningResolver) Examples(ctx context.Context, obj *Meaning) ([]*Example, error) {
+	meaningID, err := FromGraphQLID(obj.ID)
+	if err != nil {
+		return nil, transport.NewGraphQLError(ctx, "Invalid meaning ID", transport.CodeInvalidInput)
+	}
+
+	examples, err := LoadExamplesForMeaning(ctx, meaningID)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+
+	return ToGraphQLExamples(examples), nil
+}
+
+// Tags is the resolver for the tags field.
+func (r *meaningResolver) Tags(ctx context.Context, obj *Meaning) ([]*Tag, error) {
+	meaningID, err := FromGraphQLID(obj.ID)
+	if err != nil {
+		return nil, transport.NewGraphQLError(ctx, "Invalid meaning ID", transport.CodeInvalidInput)
+	}
+
+	tags, err := LoadTagsForMeaning(ctx, meaningID)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+
+	return ToGraphQLTags(tags), nil
+}
+
 // CreateWord is the resolver for the createWord field.
 func (r *mutationResolver) CreateWord(ctx context.Context, input AddWordInput) (*Word, error) {
 	result, err := r.words.Create(ctx, ToCreateWordInput(input))
@@ -47,18 +77,8 @@ func (r *mutationResolver) ReviewMeaning(ctx context.Context, meaningID string, 
 		return nil, transport.HandleError(ctx, err)
 	}
 
-	// Загружаем связанные данные
-	examples, err := r.examples.GetByMeaningIDs(ctx, []int64{meaning.ID})
-	if err != nil {
-		return nil, transport.HandleError(ctx, err)
-	}
-
-	tags, err := r.loadTagsForMeaning(ctx, meaning.ID)
-	if err != nil {
-		return nil, transport.HandleError(ctx, err)
-	}
-
-	return ToGraphQLMeaning(meaning, ToGraphQLExamples(examples), tags), nil
+	// Examples и Tags загрузятся через field resolvers
+	return ToGraphQLMeaningBasic(meaning), nil
 }
 
 // DeleteWord is the resolver for the deleteWord field.
@@ -83,13 +103,10 @@ func (r *queryResolver) Words(ctx context.Context, filter *WordFilter, limit *in
 		return nil, transport.HandleError(ctx, err)
 	}
 
+	// Используем ToGraphQLWordBasic — meanings загрузятся через field resolver
 	result := make([]*Word, 0, len(words))
 	for _, w := range words {
-		wordWithRelations, err := r.words.GetByID(ctx, w.ID)
-		if err != nil {
-			return nil, transport.HandleError(ctx, err)
-		}
-		result = append(result, WordWithRelationsToGraphQL(wordWithRelations))
+		result = append(result, ToGraphQLWordBasic(w))
 	}
 
 	return result, nil
@@ -119,19 +136,10 @@ func (r *queryResolver) StudyQueue(ctx context.Context, limit *int) ([]*Meaning,
 		return nil, transport.HandleError(ctx, err)
 	}
 
+	// Examples и Tags загрузятся через field resolvers с DataLoader
 	result := make([]*Meaning, 0, len(meanings))
 	for _, m := range meanings {
-		examples, err := r.examples.GetByMeaningIDs(ctx, []int64{m.ID})
-		if err != nil {
-			return nil, transport.HandleError(ctx, err)
-		}
-
-		tags, err := r.loadTagsForMeaning(ctx, m.ID)
-		if err != nil {
-			return nil, transport.HandleError(ctx, err)
-		}
-
-		result = append(result, ToGraphQLMeaning(m, ToGraphQLExamples(examples), tags))
+		result = append(result, ToGraphQLMeaningBasic(m))
 	}
 
 	return result, nil
@@ -146,11 +154,40 @@ func (r *queryResolver) Stats(ctx context.Context) (*DashboardStats, error) {
 	return ToGraphQLStats(stats), nil
 }
 
+// Meanings is the resolver for the meanings field.
+func (r *wordResolver) Meanings(ctx context.Context, obj *Word) ([]*Meaning, error) {
+	wordID, err := FromGraphQLID(obj.ID)
+	if err != nil {
+		return nil, transport.NewGraphQLError(ctx, "Invalid word ID", transport.CodeInvalidInput)
+	}
+
+	meanings, err := LoadMeaningsForWord(ctx, wordID)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+
+	// Конвертируем в GraphQL тип (без examples и tags — они загрузятся через field resolvers)
+	result := make([]*Meaning, 0, len(meanings))
+	for _, m := range meanings {
+		result = append(result, ToGraphQLMeaningBasic(m))
+	}
+
+	return result, nil
+}
+
+// Meaning returns MeaningResolver implementation.
+func (r *Resolver) Meaning() MeaningResolver { return &meaningResolver{r} }
+
 // Mutation returns MutationResolver implementation.
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
 // Query returns QueryResolver implementation.
 func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
+// Word returns WordResolver implementation.
+func (r *Resolver) Word() WordResolver { return &wordResolver{r} }
+
+type meaningResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+type wordResolver struct{ *Resolver }

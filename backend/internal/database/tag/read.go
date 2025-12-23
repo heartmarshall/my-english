@@ -2,8 +2,6 @@ package tag
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/heartmarshall/my-english/internal/database"
@@ -21,9 +19,9 @@ func (r *Repo) GetByID(ctx context.Context, id int64) (*model.Tag, error) {
 		return nil, err
 	}
 
-	tag, err := r.scanRow(r.q.QueryRowContext(ctx, query, args...))
+	tag, err := r.scanRow(r.q.QueryRow(ctx, query, args...))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if database.IsNotFoundError(err) {
 			return nil, database.ErrNotFound
 		}
 		return nil, err
@@ -43,9 +41,9 @@ func (r *Repo) GetByName(ctx context.Context, name string) (*model.Tag, error) {
 		return nil, err
 	}
 
-	tag, err := r.scanRow(r.q.QueryRowContext(ctx, query, args...))
+	tag, err := r.scanRow(r.q.QueryRow(ctx, query, args...))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if database.IsNotFoundError(err) {
 			return nil, database.ErrNotFound
 		}
 		return nil, err
@@ -69,7 +67,7 @@ func (r *Repo) GetByNames(ctx context.Context, names []string) ([]*model.Tag, er
 		return nil, err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +91,7 @@ func (r *Repo) GetByIDs(ctx context.Context, ids []int64) ([]*model.Tag, error) 
 		return nil, err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +111,7 @@ func (r *Repo) List(ctx context.Context) ([]*model.Tag, error) {
 		return nil, err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

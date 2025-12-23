@@ -4,20 +4,20 @@ import (
 	"context"
 	"testing"
 
-	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/heartmarshall/my-english/internal/database/meaningtag"
 	"github.com/heartmarshall/my-english/internal/database/testutil"
+	pgxmock "github.com/pashagolub/pgxmock/v2"
 )
 
 func TestRepo_AttachTag(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := meaningtag.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := meaningtag.New(q)
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
 		mock.ExpectExec(`INSERT INTO meanings_tags`).
 			WithArgs(int64(1), int64(2)).
-			WillReturnResult(sqlmock.NewResult(0, 1))
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		err := repo.AttachTag(ctx, 1, 2)
 
@@ -29,14 +29,14 @@ func TestRepo_AttachTag(t *testing.T) {
 }
 
 func TestRepo_AttachTags(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := meaningtag.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := meaningtag.New(q)
 	ctx := context.Background()
 
 	t.Run("attaches multiple", func(t *testing.T) {
 		mock.ExpectExec(`INSERT INTO meanings_tags`).
 			WithArgs(int64(1), int64(2), int64(1), int64(3), int64(1), int64(4)).
-			WillReturnResult(sqlmock.NewResult(0, 3))
+			WillReturnResult(pgxmock.NewResult("INSERT", 3))
 
 		err := repo.AttachTags(ctx, 1, []int64{2, 3, 4})
 
@@ -56,14 +56,14 @@ func TestRepo_AttachTags(t *testing.T) {
 }
 
 func TestRepo_DetachTag(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := meaningtag.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := meaningtag.New(q)
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM meanings_tags WHERE meaning_id = \$1 AND tag_id = \$2`).
 			WithArgs(int64(1), int64(2)).
-			WillReturnResult(sqlmock.NewResult(0, 1))
+			WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
 		err := repo.DetachTag(ctx, 1, 2)
 
@@ -75,14 +75,14 @@ func TestRepo_DetachTag(t *testing.T) {
 }
 
 func TestRepo_DetachAllFromMeaning(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := meaningtag.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := meaningtag.New(q)
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM meanings_tags WHERE meaning_id = \$1`).
 			WithArgs(int64(1)).
-			WillReturnResult(sqlmock.NewResult(0, 3))
+			WillReturnResult(pgxmock.NewResult("DELETE", 3))
 
 		err := repo.DetachAllFromMeaning(ctx, 1)
 
@@ -94,12 +94,12 @@ func TestRepo_DetachAllFromMeaning(t *testing.T) {
 }
 
 func TestRepo_GetTagIDsByMeaningID(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := meaningtag.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := meaningtag.New(q)
 	ctx := context.Background()
 
 	t.Run("returns tag ids", func(t *testing.T) {
-		rows := sqlmock.NewRows([]string{"tag_id"}).
+		rows := pgxmock.NewRows([]string{"tag_id"}).
 			AddRow(1).
 			AddRow(2).
 			AddRow(3)
@@ -120,7 +120,7 @@ func TestRepo_GetTagIDsByMeaningID(t *testing.T) {
 	})
 
 	t.Run("empty result", func(t *testing.T) {
-		rows := sqlmock.NewRows([]string{"tag_id"})
+		rows := pgxmock.NewRows([]string{"tag_id"})
 
 		mock.ExpectQuery(`SELECT tag_id FROM meanings_tags WHERE meaning_id = \$1`).
 			WithArgs(int64(999)).
@@ -139,12 +139,12 @@ func TestRepo_GetTagIDsByMeaningID(t *testing.T) {
 }
 
 func TestRepo_GetByMeaningIDs(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := meaningtag.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := meaningtag.New(q)
 	ctx := context.Background()
 
 	t.Run("returns all relations", func(t *testing.T) {
-		rows := sqlmock.NewRows([]string{"meaning_id", "tag_id"}).
+		rows := pgxmock.NewRows([]string{"meaning_id", "tag_id"}).
 			AddRow(1, 10).
 			AddRow(1, 20).
 			AddRow(2, 10)
@@ -177,20 +177,20 @@ func TestRepo_GetByMeaningIDs(t *testing.T) {
 }
 
 func TestRepo_SyncTags(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := meaningtag.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := meaningtag.New(q)
 	ctx := context.Background()
 
 	t.Run("syncs tags", func(t *testing.T) {
 		// Сначала удаляет старые
 		mock.ExpectExec(`DELETE FROM meanings_tags WHERE meaning_id = \$1`).
 			WithArgs(int64(1)).
-			WillReturnResult(sqlmock.NewResult(0, 2))
+			WillReturnResult(pgxmock.NewResult("DELETE", 2))
 
 		// Затем добавляет новые
 		mock.ExpectExec(`INSERT INTO meanings_tags`).
 			WithArgs(int64(1), int64(5), int64(1), int64(6)).
-			WillReturnResult(sqlmock.NewResult(0, 2))
+			WillReturnResult(pgxmock.NewResult("INSERT", 2))
 
 		err := repo.SyncTags(ctx, 1, []int64{5, 6})
 

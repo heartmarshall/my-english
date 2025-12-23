@@ -1,11 +1,12 @@
 package word
 
 import (
-	"database/sql"
+	"time"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/model"
+	"github.com/jackc/pgx/v5"
 )
 
 // scanRow сканирует одну строку в model.Word.
@@ -13,10 +14,10 @@ func (r *Repo) scanRow(s database.Scanner) (*model.Word, error) {
 	var (
 		id            int64
 		text          string
-		transcription sql.NullString
-		audioURL      sql.NullString
-		frequencyRank sql.NullInt64
-		createdAt     sql.NullTime
+		transcription *string
+		audioURL      *string
+		frequencyRank *int64
+		createdAt     *time.Time
 	)
 
 	err := s.Scan(&id, &text, &transcription, &audioURL, &frequencyRank, &createdAt)
@@ -24,23 +25,29 @@ func (r *Repo) scanRow(s database.Scanner) (*model.Word, error) {
 		return nil, err
 	}
 
+	var freqRank *int
+	if frequencyRank != nil {
+		val := int(*frequencyRank)
+		freqRank = &val
+	}
+
 	word := &model.Word{
 		ID:            id,
 		Text:          text,
-		Transcription: database.PtrString(transcription),
-		AudioURL:      database.PtrString(audioURL),
-		FrequencyRank: database.PtrInt(frequencyRank),
+		Transcription: transcription,
+		AudioURL:      audioURL,
+		FrequencyRank: freqRank,
 	}
 
-	if createdAt.Valid {
-		word.CreatedAt = createdAt.Time
+	if createdAt != nil {
+		word.CreatedAt = *createdAt
 	}
 
 	return word, nil
 }
 
 // scanRows сканирует несколько строк в слайс model.Word.
-func (r *Repo) scanRows(rows *sql.Rows) ([]*model.Word, error) {
+func (r *Repo) scanRows(rows pgx.Rows) ([]*model.Word, error) {
 	words := make([]*model.Word, 0)
 
 	for rows.Next() {

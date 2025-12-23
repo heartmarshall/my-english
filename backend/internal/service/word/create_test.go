@@ -36,12 +36,23 @@ func TestService_Create(t *testing.T) {
 		tagRepo := &mockTagRepository{}
 		meaningTagRepo := &mockMeaningTagRepository{}
 
+		txRunner := &mockTxRunner{}
+		repoFactory := &mockRepositoryFactory{
+			wordRepo:       wordRepo,
+			meaningRepo:    meaningRepo,
+			exampleRepo:    exampleRepo,
+			tagRepo:        tagRepo,
+			meaningTagRepo: meaningTagRepo,
+		}
+
 		svc := word.New(word.Deps{
-			Words:      wordRepo,
-			Meanings:   meaningRepo,
-			Examples:   exampleRepo,
-			Tags:       tagRepo,
-			MeaningTag: meaningTagRepo,
+			Words:       wordRepo,
+			Meanings:    meaningRepo,
+			Examples:    exampleRepo,
+			Tags:        tagRepo,
+			MeaningTag:  meaningTagRepo,
+			TxRunner:    txRunner,
+			RepoFactory: repoFactory,
 		})
 
 		input := word.CreateWordInput{
@@ -155,12 +166,28 @@ func TestService_Create(t *testing.T) {
 			},
 		}
 
+		meaningRepo := &mockMeaningRepository{}
+		exampleRepo := &mockExampleRepository{}
+		tagRepo := &mockTagRepository{}
+		meaningTagRepo := &mockMeaningTagRepository{}
+
+		txRunner := &mockTxRunner{}
+		repoFactory := &mockRepositoryFactory{
+			wordRepo:       wordRepo,
+			meaningRepo:    meaningRepo,
+			exampleRepo:    exampleRepo,
+			tagRepo:        tagRepo,
+			meaningTagRepo: meaningTagRepo,
+		}
+
 		svc := word.New(word.Deps{
-			Words:      wordRepo,
-			Meanings:   &mockMeaningRepository{},
-			Examples:   &mockExampleRepository{},
-			Tags:       &mockTagRepository{},
-			MeaningTag: &mockMeaningTagRepository{},
+			Words:       wordRepo,
+			Meanings:    meaningRepo,
+			Examples:    exampleRepo,
+			Tags:        tagRepo,
+			MeaningTag:  meaningTagRepo,
+			TxRunner:    txRunner,
+			RepoFactory: repoFactory,
 		})
 
 		input := word.CreateWordInput{

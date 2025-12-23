@@ -1,10 +1,9 @@
 package example
 
 import (
-	"database/sql"
-
 	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/model"
+	"github.com/jackc/pgx/v5"
 )
 
 func (r *Repo) scanRow(s database.Scanner) (*model.Example, error) {
@@ -12,8 +11,8 @@ func (r *Repo) scanRow(s database.Scanner) (*model.Example, error) {
 		id         int64
 		meaningID  int64
 		sentenceEn string
-		sentenceRu sql.NullString
-		sourceName sql.NullString
+		sentenceRu *string
+		sourceName *string
 	)
 
 	err := s.Scan(&id, &meaningID, &sentenceEn, &sentenceRu, &sourceName)
@@ -25,18 +24,18 @@ func (r *Repo) scanRow(s database.Scanner) (*model.Example, error) {
 		ID:         id,
 		MeaningID:  meaningID,
 		SentenceEn: sentenceEn,
-		SentenceRu: database.PtrString(sentenceRu),
+		SentenceRu: sentenceRu,
 	}
 
-	if sourceName.Valid {
-		src := model.ExampleSource(sourceName.String)
+	if sourceName != nil {
+		src := model.ExampleSource(*sourceName)
 		ex.SourceName = &src
 	}
 
 	return ex, nil
 }
 
-func (r *Repo) scanRows(rows *sql.Rows) ([]*model.Example, error) {
+func (r *Repo) scanRows(rows pgx.Rows) ([]*model.Example, error) {
 	examples := make([]*model.Example, 0)
 
 	for rows.Next() {

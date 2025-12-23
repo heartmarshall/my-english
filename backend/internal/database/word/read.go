@@ -2,8 +2,6 @@ package word
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"strings"
 
 	"github.com/Masterminds/squirrel"
@@ -22,9 +20,9 @@ func (r *Repo) GetByID(ctx context.Context, id int64) (*model.Word, error) {
 		return nil, err
 	}
 
-	word, err := r.scanRow(r.q.QueryRowContext(ctx, query, args...))
+	word, err := r.scanRow(r.q.QueryRow(ctx, query, args...))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if database.IsNotFoundError(err) {
 			return nil, database.ErrNotFound
 		}
 		return nil, err
@@ -44,9 +42,9 @@ func (r *Repo) GetByText(ctx context.Context, text string) (*model.Word, error) 
 		return nil, err
 	}
 
-	word, err := r.scanRow(r.q.QueryRowContext(ctx, query, args...))
+	word, err := r.scanRow(r.q.QueryRow(ctx, query, args...))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if database.IsNotFoundError(err) {
 			return nil, database.ErrNotFound
 		}
 		return nil, err
@@ -76,7 +74,7 @@ func (r *Repo) List(ctx context.Context, filter *model.WordFilter, limit, offset
 		return nil, err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +97,7 @@ func (r *Repo) Count(ctx context.Context, filter *model.WordFilter) (int, error)
 	}
 
 	var count int
-	err = r.q.QueryRowContext(ctx, query, args...).Scan(&count)
+	err = r.q.QueryRow(ctx, query, args...).Scan(&count)
 	if err != nil {
 		return 0, err
 	}
@@ -119,9 +117,9 @@ func (r *Repo) Exists(ctx context.Context, id int64) (bool, error) {
 	}
 
 	var exists int
-	err = r.q.QueryRowContext(ctx, query, args...).Scan(&exists)
+	err = r.q.QueryRow(ctx, query, args...).Scan(&exists)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if database.IsNotFoundError(err) {
 			return false, nil
 		}
 		return false, err

@@ -33,7 +33,7 @@ func (r *Repo) Create(ctx context.Context, example *model.Example) error {
 		return err
 	}
 
-	err = r.q.QueryRowContext(ctx, query, args...).Scan(&example.ID)
+	err = r.q.QueryRow(ctx, query, args...).Scan(&example.ID)
 	if err != nil {
 		return database.WrapDBError(err)
 	}
@@ -70,7 +70,7 @@ func (r *Repo) CreateBatch(ctx context.Context, examples []*model.Example) error
 		return err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return database.WrapDBError(err)
 	}
@@ -108,17 +108,12 @@ func (r *Repo) Update(ctx context.Context, example *model.Example) error {
 		return err
 	}
 
-	result, err := r.q.ExecContext(ctx, query, args...)
+	commandTag, err := r.q.Exec(ctx, query, args...)
 	if err != nil {
 		return database.WrapDBError(err)
 	}
 
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if affected == 0 {
+	if commandTag.RowsAffected() == 0 {
 		return database.ErrNotFound
 	}
 
@@ -135,17 +130,12 @@ func (r *Repo) Delete(ctx context.Context, id int64) error {
 		return err
 	}
 
-	result, err := r.q.ExecContext(ctx, query, args...)
+	commandTag, err := r.q.Exec(ctx, query, args...)
 	if err != nil {
 		return err
 	}
 
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if affected == 0 {
+	if commandTag.RowsAffected() == 0 {
 		return database.ErrNotFound
 	}
 
@@ -162,10 +152,9 @@ func (r *Repo) DeleteByMeaningID(ctx context.Context, meaningID int64) (int64, e
 		return 0, err
 	}
 
-	result, err := r.q.ExecContext(ctx, query, args...)
+	commandTag, err := r.q.Exec(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}
-
-	return result.RowsAffected()
+	return commandTag.RowsAffected(), nil
 }

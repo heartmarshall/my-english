@@ -2,12 +2,11 @@
 package testutil
 
 import (
-	"database/sql"
 	"testing"
 	"time"
 
-	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/heartmarshall/my-english/internal/database"
+	pgxmock "github.com/pashagolub/pgxmock/v2"
 )
 
 // MockClock — мок для database.Clock.
@@ -33,24 +32,24 @@ func NewMockClock() *MockClock {
 // Compile-time проверка.
 var _ database.Clock = (*MockClock)(nil)
 
-// NewMockDB создаёт мок базы данных для тестов.
-func NewMockDB(t *testing.T) (*sql.DB, sqlmock.Sqlmock) {
+// NewMockQuerier создаёт мок Querier для тестов.
+func NewMockQuerier(t *testing.T) (database.Querier, pgxmock.PgxPoolIface) {
 	t.Helper()
 
-	db, mock, err := sqlmock.New()
+	mock, err := pgxmock.NewPool()
 	if err != nil {
-		t.Fatalf("failed to create sqlmock: %v", err)
+		t.Fatalf("failed to create pgxmock: %v", err)
 	}
 
 	t.Cleanup(func() {
-		db.Close()
+		mock.Close()
 	})
 
-	return db, mock
+	return mock, mock
 }
 
-// ExpectationsWereMet проверяет, что все ожидания sqlmock выполнены.
-func ExpectationsWereMet(t *testing.T, mock sqlmock.Sqlmock) {
+// ExpectationsWereMet проверяет, что все ожидания pgxmock выполнены.
+func ExpectationsWereMet(t *testing.T, mock pgxmock.PgxPoolIface) {
 	t.Helper()
 
 	if err := mock.ExpectationsWereMet(); err != nil {

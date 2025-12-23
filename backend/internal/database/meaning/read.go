@@ -2,8 +2,6 @@ package meaning
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/heartmarshall/my-english/internal/database"
@@ -21,9 +19,9 @@ func (r *Repo) GetByID(ctx context.Context, id int64) (*model.Meaning, error) {
 		return nil, err
 	}
 
-	meaning, err := r.scanRow(r.q.QueryRowContext(ctx, query, args...))
+	meaning, err := r.scanRow(r.q.QueryRow(ctx, query, args...))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if database.IsNotFoundError(err) {
 			return nil, database.ErrNotFound
 		}
 		return nil, err
@@ -44,7 +42,32 @@ func (r *Repo) GetByWordID(ctx context.Context, wordID int64) ([]*model.Meaning,
 		return nil, err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return r.scanRows(rows)
+}
+
+// GetByWordIDs возвращает все meanings для нескольких слов (batch loading).
+func (r *Repo) GetByWordIDs(ctx context.Context, wordIDs []int64) ([]*model.Meaning, error) {
+	if len(wordIDs) == 0 {
+		return make([]*model.Meaning, 0), nil
+	}
+
+	query, args, err := database.Builder.
+		Select(columns...).
+		From(tableName).
+		Where(squirrel.Eq{"word_id": wordIDs}).
+		OrderBy("word_id ASC", "created_at ASC").
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +96,7 @@ func (r *Repo) List(ctx context.Context, filter *Filter, limit, offset int) ([]*
 		return nil, err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +119,7 @@ func (r *Repo) Count(ctx context.Context, filter *Filter) (int, error) {
 	}
 
 	var count int
-	err = r.q.QueryRowContext(ctx, query, args...).Scan(&count)
+	err = r.q.QueryRow(ctx, query, args...).Scan(&count)
 	if err != nil {
 		return 0, err
 	}
@@ -117,9 +140,9 @@ func (r *Repo) Exists(ctx context.Context, id int64) (bool, error) {
 	}
 
 	var exists int
-	err = r.q.QueryRowContext(ctx, query, args...).Scan(&exists)
+	err = r.q.QueryRow(ctx, query, args...).Scan(&exists)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if database.IsNotFoundError(err) {
 			return false, nil
 		}
 		return false, err

@@ -2,21 +2,21 @@ package word_test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
-	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/database/testutil"
 	"github.com/heartmarshall/my-english/internal/database/word"
 	"github.com/heartmarshall/my-english/internal/model"
+	"github.com/jackc/pgx/v5"
+	pgxmock "github.com/pashagolub/pgxmock/v2"
 )
 
 func TestRepo_Create(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
+	q, mock := testutil.NewMockQuerier(t)
 	clock := testutil.NewMockClock()
-	repo := word.New(db, word.WithClock(clock))
+	repo := word.New(q, word.WithClock(clock))
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
@@ -27,9 +27,13 @@ func TestRepo_Create(t *testing.T) {
 			FrequencyRank: intPtr(100),
 		}
 
+		transcription := "həˈloʊ"
+		audioURL := "https://example.com/hello.mp3"
+		freqRank := int64(100)
+		rows := pgxmock.NewRows([]string{"id"}).AddRow(int64(1))
 		mock.ExpectQuery(`INSERT INTO words`).
-			WithArgs("hello", "həˈloʊ", "https://example.com/hello.mp3", int64(100), clock.Now()).
-			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+			WithArgs("hello", &transcription, &audioURL, &freqRank, clock.Now()).
+			WillReturnRows(rows)
 
 		err := repo.Create(ctx, w)
 
@@ -68,7 +72,7 @@ func TestRepo_Create(t *testing.T) {
 
 		mock.ExpectQuery(`INSERT INTO words`).
 			WithArgs("duplicate", nil, nil, nil, clock.Now()).
-			WillReturnError(sql.ErrNoRows) // simplified; real error would be postgres duplicate key
+			WillReturnError(pgx.ErrNoRows) // simplified; real error would be postgres duplicate key
 
 		err := repo.Create(ctx, w)
 
@@ -80,14 +84,17 @@ func TestRepo_Create(t *testing.T) {
 }
 
 func TestRepo_GetByID(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := word.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := word.New(q)
 	ctx := context.Background()
 
 	t.Run("found", func(t *testing.T) {
 		now := time.Now()
-		rows := sqlmock.NewRows([]string{"id", "text", "transcription", "audio_url", "frequency_rank", "created_at"}).
-			AddRow(1, "hello", "həˈloʊ", "https://example.com/hello.mp3", 100, now)
+		transcription := "həˈloʊ"
+		audioURL := "https://example.com/hello.mp3"
+		freqRank := int64(100)
+		rows := pgxmock.NewRows([]string{"id", "text", "transcription", "audio_url", "frequency_rank", "created_at"}).
+			AddRow(int64(1), "hello", &transcription, &audioURL, &freqRank, &now)
 
 		mock.ExpectQuery(`SELECT (.+) FROM words WHERE id = \$1`).
 			WithArgs(int64(1)).
@@ -110,7 +117,7 @@ func TestRepo_GetByID(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		mock.ExpectQuery(`SELECT (.+) FROM words WHERE id = \$1`).
 			WithArgs(int64(999)).
-			WillReturnError(sql.ErrNoRows)
+			WillReturnError(pgx.ErrNoRows)
 
 		_, err := repo.GetByID(ctx, 999)
 
@@ -122,14 +129,14 @@ func TestRepo_GetByID(t *testing.T) {
 }
 
 func TestRepo_GetByText(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := word.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := word.New(q)
 	ctx := context.Background()
 
 	t.Run("found with trimming and lowercasing", func(t *testing.T) {
 		now := time.Now()
-		rows := sqlmock.NewRows([]string{"id", "text", "transcription", "audio_url", "frequency_rank", "created_at"}).
-			AddRow(1, "hello", nil, nil, nil, now)
+		rows := pgxmock.NewRows([]string{"id", "text", "transcription", "audio_url", "frequency_rank", "created_at"}).
+			AddRow(int64(1), "hello", nil, nil, nil, &now)
 
 		mock.ExpectQuery(`SELECT (.+) FROM words WHERE text = \$1`).
 			WithArgs("hello"). // trimmed and lowercased
@@ -149,7 +156,7 @@ func TestRepo_GetByText(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		mock.ExpectQuery(`SELECT (.+) FROM words WHERE text = \$1`).
 			WithArgs("nonexistent").
-			WillReturnError(sql.ErrNoRows)
+			WillReturnError(pgx.ErrNoRows)
 
 		_, err := repo.GetByText(ctx, "nonexistent")
 
@@ -161,15 +168,15 @@ func TestRepo_GetByText(t *testing.T) {
 }
 
 func TestRepo_List(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := word.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := word.New(q)
 	ctx := context.Background()
 
 	t.Run("without filter", func(t *testing.T) {
 		now := time.Now()
-		rows := sqlmock.NewRows([]string{"id", "text", "transcription", "audio_url", "frequency_rank", "created_at"}).
-			AddRow(1, "hello", nil, nil, nil, now).
-			AddRow(2, "world", nil, nil, nil, now)
+		rows := pgxmock.NewRows([]string{"id", "text", "transcription", "audio_url", "frequency_rank", "created_at"}).
+			AddRow(int64(1), "hello", nil, nil, nil, &now).
+			AddRow(int64(2), "world", nil, nil, nil, &now)
 
 		mock.ExpectQuery(`SELECT (.+) FROM words ORDER BY created_at DESC LIMIT 20 OFFSET 0`).
 			WillReturnRows(rows)
@@ -187,8 +194,8 @@ func TestRepo_List(t *testing.T) {
 
 	t.Run("with search filter", func(t *testing.T) {
 		now := time.Now()
-		rows := sqlmock.NewRows([]string{"id", "text", "transcription", "audio_url", "frequency_rank", "created_at"}).
-			AddRow(1, "hello", nil, nil, nil, now)
+		rows := pgxmock.NewRows([]string{"id", "text", "transcription", "audio_url", "frequency_rank", "created_at"}).
+			AddRow(int64(1), "hello", nil, nil, nil, &now)
 
 		search := "hel"
 		filter := &model.WordFilter{Search: &search}
@@ -209,7 +216,7 @@ func TestRepo_List(t *testing.T) {
 	})
 
 	t.Run("empty result", func(t *testing.T) {
-		rows := sqlmock.NewRows([]string{"id", "text", "transcription", "audio_url", "frequency_rank", "created_at"})
+		rows := pgxmock.NewRows([]string{"id", "text", "transcription", "audio_url", "frequency_rank", "created_at"})
 
 		mock.ExpectQuery(`SELECT (.+) FROM words`).
 			WillReturnRows(rows)
@@ -230,12 +237,12 @@ func TestRepo_List(t *testing.T) {
 }
 
 func TestRepo_Count(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := word.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := word.New(q)
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		rows := sqlmock.NewRows([]string{"count"}).AddRow(42)
+		rows := pgxmock.NewRows([]string{"count"}).AddRow(int64(42))
 
 		mock.ExpectQuery(`SELECT COUNT\(\*\) FROM words`).
 			WillReturnRows(rows)
@@ -253,8 +260,8 @@ func TestRepo_Count(t *testing.T) {
 }
 
 func TestRepo_Update(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := word.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := word.New(q)
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
@@ -265,7 +272,7 @@ func TestRepo_Update(t *testing.T) {
 
 		mock.ExpectExec(`UPDATE words SET`).
 			WithArgs("updated", nil, nil, nil, int64(1)).
-			WillReturnResult(sqlmock.NewResult(0, 1))
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 		err := repo.Update(ctx, w)
 
@@ -283,7 +290,7 @@ func TestRepo_Update(t *testing.T) {
 
 		mock.ExpectExec(`UPDATE words SET`).
 			WithArgs("test", nil, nil, nil, int64(999)).
-			WillReturnResult(sqlmock.NewResult(0, 0))
+			WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 
 		err := repo.Update(ctx, w)
 
@@ -303,14 +310,14 @@ func TestRepo_Update(t *testing.T) {
 }
 
 func TestRepo_Delete(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := word.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := word.New(q)
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM words WHERE id = \$1`).
 			WithArgs(int64(1)).
-			WillReturnResult(sqlmock.NewResult(0, 1))
+			WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
 		err := repo.Delete(ctx, 1)
 
@@ -323,7 +330,7 @@ func TestRepo_Delete(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM words WHERE id = \$1`).
 			WithArgs(int64(999)).
-			WillReturnResult(sqlmock.NewResult(0, 0))
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 
 		err := repo.Delete(ctx, 999)
 
@@ -335,12 +342,12 @@ func TestRepo_Delete(t *testing.T) {
 }
 
 func TestRepo_Exists(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := word.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := word.New(q)
 	ctx := context.Background()
 
 	t.Run("exists", func(t *testing.T) {
-		rows := sqlmock.NewRows([]string{"1"}).AddRow(1)
+		rows := pgxmock.NewRows([]string{"1"}).AddRow(int64(1))
 
 		mock.ExpectQuery(`SELECT 1 FROM words WHERE id = \$1 LIMIT 1`).
 			WithArgs(int64(1)).
@@ -360,7 +367,7 @@ func TestRepo_Exists(t *testing.T) {
 	t.Run("not exists", func(t *testing.T) {
 		mock.ExpectQuery(`SELECT 1 FROM words WHERE id = \$1 LIMIT 1`).
 			WithArgs(int64(999)).
-			WillReturnError(sql.ErrNoRows)
+			WillReturnError(pgx.ErrNoRows)
 
 		exists, err := repo.Exists(ctx, 999)
 

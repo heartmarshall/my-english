@@ -2,8 +2,6 @@ package example
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/heartmarshall/my-english/internal/database"
@@ -21,9 +19,9 @@ func (r *Repo) GetByID(ctx context.Context, id int64) (*model.Example, error) {
 		return nil, err
 	}
 
-	example, err := r.scanRow(r.q.QueryRowContext(ctx, query, args...))
+	example, err := r.scanRow(r.q.QueryRow(ctx, query, args...))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if database.IsNotFoundError(err) {
 			return nil, database.ErrNotFound
 		}
 		return nil, err
@@ -43,7 +41,7 @@ func (r *Repo) GetByMeaningID(ctx context.Context, meaningID int64) ([]*model.Ex
 		return nil, err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +65,7 @@ func (r *Repo) GetByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]*mode
 		return nil, err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

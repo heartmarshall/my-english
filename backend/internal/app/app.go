@@ -2,9 +2,8 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,32 +11,38 @@ import (
 	"time"
 
 	"github.com/heartmarshall/my-english/graph"
-	_ "github.com/lib/pq" // PostgreSQL driver
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // App — главная структура приложения.
 type App struct {
 	config Config
+	logger *slog.Logger
 	deps   *Dependencies
 	server *http.Server
 }
 
 // New создаёт новое приложение.
 func New(cfg Config) (*App, error) {
+	// Инициализация логгера
+	logger := NewLogger(cfg.Log)
+	slog.SetDefault(logger)
+
 	// Подключение к базе данных
-	db, err := connectDB(cfg.Database)
+	pool, err := connectDB(cfg.Database, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
 	// Инициализация зависимостей
-	deps := NewDependencies(db)
+	deps := NewDependencies(pool)
 
 	// HTTP сервер
-	server := newHTTPServer(cfg, deps.Resolver)
+	server := newHTTPServer(cfg, deps, logger)
 
 	return &App{
 		config: cfg,
+		logger: logger,
 		deps:   deps,
 		server: server,
 	}, nil
@@ -50,10 +55,14 @@ func (a *App) Run() error {
 
 	// Запуск сервера в горутине
 	go func() {
-		log.Printf("Starting server on %s", a.config.Server.Addr())
-		log.Printf("GraphQL endpoint: http://%s/graphql", a.config.Server.Addr())
+		a.logger.Info("starting server",
+			slog.String("addr", a.config.Server.Addr()),
+			slog.String("graphql", fmt.Sprintf("http://%s/graphql", a.config.Server.Addr())),
+		)
 		if a.config.GraphQL.EnablePlayground {
-			log.Printf("GraphQL Playground: http://%s/playground", a.config.Server.Addr())
+			a.logger.Info("playground enabled",
+				slog.String("url", fmt.Sprintf("http://%s/playground", a.config.Server.Addr())),
+			)
 		}
 
 		if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -69,7 +78,7 @@ func (a *App) Run() error {
 	case err := <-errChan:
 		return fmt.Errorf("server error: %w", err)
 	case sig := <-quit:
-		log.Printf("Received signal: %v. Shutting down...", sig)
+		a.logger.Info("received shutdown signal", slog.String("signal", sig.String()))
 	}
 
 	return a.Shutdown()
@@ -86,57 +95,76 @@ func (a *App) Shutdown() error {
 	}
 
 	// Закрытие соединения с БД
-	if err := a.deps.DB.Close(); err != nil {
-		return fmt.Errorf("failed to close database: %w", err)
-	}
+	a.deps.DB.Close()
 
-	log.Println("Application stopped gracefully")
+	a.logger.Info("application stopped gracefully")
 	return nil
 }
 
-// connectDB устанавливает соединение с базой данных.
-func connectDB(cfg DatabaseConfig) (*sql.DB, error) {
-	db, err := sql.Open("postgres", cfg.DSN())
+// connectDB устанавливает соединение с базой данных через pgxpool.
+func connectDB(cfg DatabaseConfig, logger *slog.Logger) (*pgxpool.Pool, error) {
+	config, err := pgxpool.ParseConfig(cfg.DSN())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse database config: %w", err)
 	}
 
 	// Настройка пула соединений
-	db.SetMaxOpenConns(cfg.MaxOpenConns)
-	db.SetMaxIdleConns(cfg.MaxIdleConns)
-	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	config.MaxConns = int32(cfg.MaxOpenConns)
+	config.MinConns = int32(cfg.MaxIdleConns)
+	config.MaxConnLifetime = cfg.ConnMaxLifetime
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+	}
 
 	// Проверка соединения
-	if err := db.Ping(); err != nil {
+	if err := pool.Ping(context.Background()); err != nil {
+		pool.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	log.Println("Connected to database")
-	return db, nil
+	logger.Info("connected to database",
+		slog.String("host", cfg.Host),
+		slog.Int("port", cfg.Port),
+		slog.String("database", cfg.Database),
+		slog.Int("max_conns", cfg.MaxOpenConns),
+	)
+	return pool, nil
 }
 
 // newHTTPServer создаёт HTTP сервер.
-func newHTTPServer(cfg Config, resolver *graph.Resolver) *http.Server {
+func newHTTPServer(cfg Config, deps *Dependencies, logger *slog.Logger) *http.Server {
 	mux := http.NewServeMux()
 
 	// GraphQL handler
-	graphqlServer := graph.NewServer(resolver, graph.ServerConfig{
+	graphqlServer := graph.NewServer(deps.Resolver, graph.ServerConfig{
 		EnablePlayground:    cfg.GraphQL.EnablePlayground,
 		EnableIntrospection: cfg.GraphQL.EnableIntrospection,
 		QueryCacheSize:      cfg.GraphQL.QueryCacheSize,
 	})
 	graphqlServer.Routes(mux, "/graphql")
 
-	// Health check
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	})
+	// Health checks
+	healthChecker := NewHealthChecker(deps.DB)
+	mux.HandleFunc("/health", healthChecker.Handler())
+	mux.HandleFunc("/live", healthChecker.LivenessHandler())
+	mux.HandleFunc("/ready", healthChecker.ReadinessHandler())
 
-	// Middleware chain
-	handler := graph.RecoveryMiddleware(
-		graph.LoggingMiddleware(
-			graph.CORSMiddleware(mux),
+	// DataLoader dependencies — использует сервис, не репозитории
+	loaderDeps := graph.LoaderDeps{
+		Loader: deps.Services.Loader,
+	}
+
+	// Middleware chain (порядок: снаружи → внутрь)
+	// Recovery → Logging → Timeout → DataLoader → CORS → Handler
+	handler := RecoveryMiddleware(logger)(
+		LoggingMiddleware(logger)(
+			TimeoutMiddleware(cfg.Server.RequestTimeout)(
+				graph.DataLoaderMiddleware(loaderDeps)(
+					graph.CORSMiddleware(mux),
+				),
+			),
 		),
 	)
 

@@ -27,39 +27,24 @@ type StudyService interface {
 	ReviewMeaning(ctx context.Context, meaningID int64, grade int) (*model.Meaning, error)
 }
 
-// ExampleLoader загружает примеры для meanings.
-type ExampleLoader interface {
-	GetByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]*model.Example, error)
-}
-
-// TagLoader загружает теги для meanings.
-type TagLoader interface {
-	GetByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]*model.MeaningTag, error)
-	GetByIDs(ctx context.Context, ids []int64) ([]*model.Tag, error)
-}
-
 // Deps — зависимости для резолвера.
+// Resolver использует только сервисы, не репозитории.
 type Deps struct {
-	Words    WordService
-	Study    StudyService
-	Examples ExampleLoader
-	Tags     TagLoader
+	Words WordService
+	Study StudyService
 }
 
 // Resolver — корневой резолвер GraphQL.
+// Использует только сервисы. DataLoaders инжектируются через middleware.
 type Resolver struct {
-	words    WordService
-	study    StudyService
-	examples ExampleLoader
-	tags     TagLoader
+	words WordService
+	study StudyService
 }
 
 // NewResolver создаёт новый резолвер с зависимостями.
 func NewResolver(deps Deps) *Resolver {
 	return &Resolver{
-		words:    deps.Words,
-		study:    deps.Study,
-		examples: deps.Examples,
-		tags:     deps.Tags,
+		words: deps.Words,
+		study: deps.Study,
 	}
 }

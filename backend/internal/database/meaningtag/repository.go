@@ -34,7 +34,7 @@ func (r *Repo) AttachTag(ctx context.Context, meaningID, tagID int64) error {
 		return err
 	}
 
-	_, err = r.q.ExecContext(ctx, query, args...)
+	_, err = r.q.Exec(ctx, query, args...)
 	return err
 }
 
@@ -59,7 +59,7 @@ func (r *Repo) AttachTags(ctx context.Context, meaningID int64, tagIDs []int64) 
 		return err
 	}
 
-	_, err = r.q.ExecContext(ctx, query, args...)
+	_, err = r.q.Exec(ctx, query, args...)
 	return err
 }
 
@@ -73,7 +73,7 @@ func (r *Repo) DetachTag(ctx context.Context, meaningID, tagID int64) error {
 		return err
 	}
 
-	_, err = r.q.ExecContext(ctx, query, args...)
+	_, err = r.q.Exec(ctx, query, args...)
 	return err
 }
 
@@ -87,7 +87,7 @@ func (r *Repo) DetachAllFromMeaning(ctx context.Context, meaningID int64) error 
 		return err
 	}
 
-	_, err = r.q.ExecContext(ctx, query, args...)
+	_, err = r.q.Exec(ctx, query, args...)
 	return err
 }
 
@@ -102,7 +102,7 @@ func (r *Repo) GetTagIDsByMeaningID(ctx context.Context, meaningID int64) ([]int
 		return nil, err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +131,7 @@ func (r *Repo) GetMeaningIDsByTagID(ctx context.Context, tagID int64) ([]int64, 
 		return nil, err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +164,7 @@ func (r *Repo) GetByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]*mode
 		return nil, err
 	}
 
-	rows, err := r.q.QueryContext(ctx, query, args...)
+	rows, err := r.q.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

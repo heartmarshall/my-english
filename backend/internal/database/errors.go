@@ -3,6 +3,9 @@ package database
 import (
 	"errors"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Кастомные ошибки слоя данных.
@@ -26,27 +29,28 @@ const (
 	pgUniqueViolation = "23505"
 )
 
+// IsNotFoundError проверяет, является ли ошибка "запись не найдена".
+func IsNotFoundError(err error) bool {
+	return errors.Is(err, pgx.ErrNoRows)
+}
+
 // IsDuplicateError проверяет, является ли ошибка нарушением UNIQUE constraint.
-// Работает с github.com/lib/pq и github.com/jackc/pgx.
+// Работает с github.com/jackc/pgx/v5.
 func IsDuplicateError(err error) bool {
 	if err == nil {
 		return false
 	}
 
+	// Проверка для pgx v5 через pgconn.PgError
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == pgUniqueViolation
+	}
+
+	// Fallback: проверка по строке (для совместимости)
 	errStr := err.Error()
-
-	// Проверка для lib/pq: "pq: duplicate key value violates unique constraint"
-	if strings.Contains(errStr, "duplicate key value violates unique constraint") {
-		return true
-	}
-
-	// Проверка для pgx: содержит код ошибки 23505
-	if strings.Contains(errStr, pgUniqueViolation) {
-		return true
-	}
-
-	// Проверка для pgx v5: "SQLSTATE 23505"
-	if strings.Contains(errStr, "SQLSTATE "+pgUniqueViolation) {
+	if strings.Contains(errStr, pgUniqueViolation) ||
+		strings.Contains(errStr, "duplicate key value violates unique constraint") {
 		return true
 	}
 

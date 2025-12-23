@@ -2,21 +2,21 @@ package tag_test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
-	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/database/tag"
 	"github.com/heartmarshall/my-english/internal/database/testutil"
 	"github.com/heartmarshall/my-english/internal/model"
+	"github.com/jackc/pgx/v5"
+	pgxmock "github.com/pashagolub/pgxmock/v2"
 )
 
 var tagColumns = []string{"id", "name"}
 
 func TestRepo_Create(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := tag.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := tag.New(q)
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
@@ -24,7 +24,7 @@ func TestRepo_Create(t *testing.T) {
 
 		mock.ExpectQuery(`INSERT INTO tags`).
 			WithArgs("vocabulary").
-			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
 		err := repo.Create(ctx, tg)
 
@@ -57,12 +57,12 @@ func TestRepo_Create(t *testing.T) {
 }
 
 func TestRepo_GetByID(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := tag.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := tag.New(q)
 	ctx := context.Background()
 
 	t.Run("found", func(t *testing.T) {
-		rows := sqlmock.NewRows(tagColumns).AddRow(1, "business")
+		rows := pgxmock.NewRows(tagColumns).AddRow(1, "business")
 
 		mock.ExpectQuery(`SELECT (.+) FROM tags WHERE id = \$1`).
 			WithArgs(int64(1)).
@@ -82,7 +82,7 @@ func TestRepo_GetByID(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		mock.ExpectQuery(`SELECT (.+) FROM tags WHERE id = \$1`).
 			WithArgs(int64(999)).
-			WillReturnError(sql.ErrNoRows)
+			WillReturnError(pgx.ErrNoRows)
 
 		_, err := repo.GetByID(ctx, 999)
 
@@ -94,12 +94,12 @@ func TestRepo_GetByID(t *testing.T) {
 }
 
 func TestRepo_GetByName(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := tag.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := tag.New(q)
 	ctx := context.Background()
 
 	t.Run("found", func(t *testing.T) {
-		rows := sqlmock.NewRows(tagColumns).AddRow(1, "travel")
+		rows := pgxmock.NewRows(tagColumns).AddRow(1, "travel")
 
 		mock.ExpectQuery(`SELECT (.+) FROM tags WHERE name = \$1`).
 			WithArgs("travel").
@@ -119,7 +119,7 @@ func TestRepo_GetByName(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		mock.ExpectQuery(`SELECT (.+) FROM tags WHERE name = \$1`).
 			WithArgs("nonexistent").
-			WillReturnError(sql.ErrNoRows)
+			WillReturnError(pgx.ErrNoRows)
 
 		_, err := repo.GetByName(ctx, "nonexistent")
 
@@ -131,12 +131,12 @@ func TestRepo_GetByName(t *testing.T) {
 }
 
 func TestRepo_GetByNames(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := tag.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := tag.New(q)
 	ctx := context.Background()
 
 	t.Run("found multiple", func(t *testing.T) {
-		rows := sqlmock.NewRows(tagColumns).
+		rows := pgxmock.NewRows(tagColumns).
 			AddRow(1, "business").
 			AddRow(2, "travel")
 
@@ -171,12 +171,12 @@ func TestRepo_GetByNames(t *testing.T) {
 }
 
 func TestRepo_List(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := tag.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := tag.New(q)
 	ctx := context.Background()
 
 	t.Run("returns all", func(t *testing.T) {
-		rows := sqlmock.NewRows(tagColumns).
+		rows := pgxmock.NewRows(tagColumns).
 			AddRow(1, "a-tag").
 			AddRow(2, "b-tag")
 
@@ -196,14 +196,14 @@ func TestRepo_List(t *testing.T) {
 }
 
 func TestRepo_Delete(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := tag.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := tag.New(q)
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM tags WHERE id = \$1`).
 			WithArgs(int64(1)).
-			WillReturnResult(sqlmock.NewResult(0, 1))
+			WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
 		err := repo.Delete(ctx, 1)
 
@@ -216,7 +216,7 @@ func TestRepo_Delete(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		mock.ExpectExec(`DELETE FROM tags WHERE id = \$1`).
 			WithArgs(int64(999)).
-			WillReturnResult(sqlmock.NewResult(0, 0))
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 
 		err := repo.Delete(ctx, 999)
 
@@ -228,12 +228,12 @@ func TestRepo_Delete(t *testing.T) {
 }
 
 func TestRepo_GetOrCreate(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := tag.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := tag.New(q)
 	ctx := context.Background()
 
 	t.Run("returns existing", func(t *testing.T) {
-		rows := sqlmock.NewRows(tagColumns).AddRow(1, "existing")
+		rows := pgxmock.NewRows(tagColumns).AddRow(1, "existing")
 
 		mock.ExpectQuery(`SELECT (.+) FROM tags WHERE name = \$1`).
 			WithArgs("existing").
@@ -253,11 +253,11 @@ func TestRepo_GetOrCreate(t *testing.T) {
 	t.Run("creates new", func(t *testing.T) {
 		mock.ExpectQuery(`SELECT (.+) FROM tags WHERE name = \$1`).
 			WithArgs("new-tag").
-			WillReturnError(sql.ErrNoRows)
+			WillReturnError(pgx.ErrNoRows)
 
 		mock.ExpectQuery(`INSERT INTO tags`).
 			WithArgs("new-tag").
-			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(5))
+			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(5))
 
 		tg, err := repo.GetOrCreate(ctx, "new-tag")
 

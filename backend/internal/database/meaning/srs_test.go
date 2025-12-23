@@ -5,22 +5,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/database/meaning"
 	"github.com/heartmarshall/my-english/internal/database/testutil"
 	"github.com/heartmarshall/my-english/internal/model"
+	pgxmock "github.com/pashagolub/pgxmock/v2"
 )
 
 func TestRepo_GetDueForReview(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
+	q, mock := testutil.NewMockQuerier(t)
 	clock := testutil.NewMockClock()
-	repo := meaning.New(db, meaning.WithClock(clock))
+	repo := meaning.New(q, meaning.WithClock(clock))
 	ctx := context.Background()
 
 	t.Run("returns due meanings", func(t *testing.T) {
 		pastTime := clock.Now().Add(-1 * time.Hour)
-		rows := sqlmock.NewRows(meaningColumns).
+		rows := pgxmock.NewRows(meaningColumns).
 			AddRow(1, 1, "noun", nil, "тест", nil, nil, "review", pastTime, 7, 2.5, 3, pastTime, pastTime)
 
 		mock.ExpectQuery(`SELECT (.+) FROM meanings WHERE next_review_at < \$1 ORDER BY next_review_at ASC LIMIT 10`).
@@ -40,13 +40,13 @@ func TestRepo_GetDueForReview(t *testing.T) {
 }
 
 func TestRepo_GetByStatus(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
-	repo := meaning.New(db)
+	q, mock := testutil.NewMockQuerier(t)
+	repo := meaning.New(q)
 	ctx := context.Background()
 
 	t.Run("returns meanings with status", func(t *testing.T) {
 		now := time.Now()
-		rows := sqlmock.NewRows(meaningColumns).
+		rows := pgxmock.NewRows(meaningColumns).
 			AddRow(1, 1, "noun", nil, "тест", nil, nil, "new", nil, nil, nil, nil, now, now)
 
 		mock.ExpectQuery(`SELECT (.+) FROM meanings WHERE learning_status = \$1 ORDER BY created_at ASC LIMIT 10`).
@@ -69,15 +69,15 @@ func TestRepo_GetByStatus(t *testing.T) {
 }
 
 func TestRepo_GetStudyQueue(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
+	q, mock := testutil.NewMockQuerier(t)
 	clock := testutil.NewMockClock()
-	repo := meaning.New(db, meaning.WithClock(clock))
+	repo := meaning.New(q, meaning.WithClock(clock))
 	ctx := context.Background()
 
 	t.Run("returns new and due meanings", func(t *testing.T) {
 		now := clock.Now()
 		pastTime := now.Add(-1 * time.Hour)
-		rows := sqlmock.NewRows(meaningColumns).
+		rows := pgxmock.NewRows(meaningColumns).
 			AddRow(1, 1, "noun", nil, "новое", nil, nil, "new", nil, nil, nil, nil, now, now).
 			AddRow(2, 2, "verb", nil, "на повторение", nil, nil, "review", pastTime, 7, 2.5, 3, now, now)
 
@@ -98,13 +98,13 @@ func TestRepo_GetStudyQueue(t *testing.T) {
 }
 
 func TestRepo_GetStats(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
+	q, mock := testutil.NewMockQuerier(t)
 	clock := testutil.NewMockClock()
-	repo := meaning.New(db, meaning.WithClock(clock))
+	repo := meaning.New(q, meaning.WithClock(clock))
 	ctx := context.Background()
 
 	t.Run("returns stats", func(t *testing.T) {
-		rows := sqlmock.NewRows([]string{"total", "mastered", "learning", "due"}).
+		rows := pgxmock.NewRows([]string{"total", "mastered", "learning", "due"}).
 			AddRow(100, 50, 30, 20)
 
 		mock.ExpectQuery(`SELECT (.+) FROM meanings`).
@@ -138,9 +138,9 @@ func TestRepo_GetStats(t *testing.T) {
 }
 
 func TestRepo_UpdateSRS(t *testing.T) {
-	db, mock := testutil.NewMockDB(t)
+	q, mock := testutil.NewMockQuerier(t)
 	clock := testutil.NewMockClock()
-	repo := meaning.New(db, meaning.WithClock(clock))
+	repo := meaning.New(q, meaning.WithClock(clock))
 	ctx := context.Background()
 
 	t.Run("success with all fields", func(t *testing.T) {
@@ -168,7 +168,7 @@ func TestRepo_UpdateSRS(t *testing.T) {
 				reviewCount,
 				int64(1), // id в WHERE в конце
 			).
-			WillReturnResult(sqlmock.NewResult(0, 1))
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 		err := repo.UpdateSRS(ctx, 1, srs)
 
@@ -190,7 +190,7 @@ func TestRepo_UpdateSRS(t *testing.T) {
 				clock.Now(),
 				int64(1),
 			).
-			WillReturnResult(sqlmock.NewResult(0, 1))
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 		err := repo.UpdateSRS(ctx, 1, srs)
 
@@ -219,7 +219,7 @@ func TestRepo_UpdateSRS(t *testing.T) {
 				clock.Now(),
 				int64(999),
 			).
-			WillReturnResult(sqlmock.NewResult(0, 0))
+			WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 
 		err := repo.UpdateSRS(ctx, 999, srs)
 

@@ -3,10 +3,54 @@ package word_test
 import (
 	"context"
 
+	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/model"
+	"github.com/heartmarshall/my-english/internal/service/word"
 )
 
 // --- Mock implementations ---
+
+// mockTxRunner выполняет функцию без реальной транзакции.
+type mockTxRunner struct {
+	RunInTxFunc func(ctx context.Context, fn func(ctx context.Context, tx database.Querier) error) error
+}
+
+func (m *mockTxRunner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx database.Querier) error) error {
+	if m.RunInTxFunc != nil {
+		return m.RunInTxFunc(ctx, fn)
+	}
+	// По умолчанию просто вызываем функцию с nil querier
+	return fn(ctx, nil)
+}
+
+// mockRepositoryFactory создаёт mock репозитории.
+type mockRepositoryFactory struct {
+	wordRepo       word.WordRepository
+	meaningRepo    word.MeaningRepository
+	exampleRepo    word.ExampleRepository
+	tagRepo        word.TagRepository
+	meaningTagRepo word.MeaningTagRepository
+}
+
+func (f *mockRepositoryFactory) Words(_ database.Querier) word.WordRepository {
+	return f.wordRepo
+}
+
+func (f *mockRepositoryFactory) Meanings(_ database.Querier) word.MeaningRepository {
+	return f.meaningRepo
+}
+
+func (f *mockRepositoryFactory) Examples(_ database.Querier) word.ExampleRepository {
+	return f.exampleRepo
+}
+
+func (f *mockRepositoryFactory) Tags(_ database.Querier) word.TagRepository {
+	return f.tagRepo
+}
+
+func (f *mockRepositoryFactory) MeaningTags(_ database.Querier) word.MeaningTagRepository {
+	return f.meaningTagRepo
+}
 
 type mockWordRepository struct {
 	CreateFunc    func(ctx context.Context, word *model.Word) error
