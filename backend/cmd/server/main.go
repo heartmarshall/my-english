@@ -14,29 +14,22 @@ func main() {
 	configPath := flag.String("config", "", "path to YAML config file (optional)")
 	flag.Parse()
 
-	// Загружаем конфигурацию
-	var cfg config.Config
-	var err error
-	if *configPath != "" {
-		cfg, err = config.LoadFromYAML(*configPath)
-		if err != nil {
-			log.Fatalf("Failed to load config: %v", err)
-		}
-	} else {
-		// Проверяем переменную окружения CONFIG_PATH
+	// Проверяем переменную окружения CONFIG_PATH, если флаг не указан
+	if *configPath == "" {
 		if configPathEnv := os.Getenv("CONFIG_PATH"); configPathEnv != "" {
-			cfg, err = config.LoadFromYAML(configPathEnv)
-			if err != nil {
-				log.Fatalf("Failed to load config: %v", err)
-			}
-		} else {
-			// Используем переменные окружения
-			cfg = config.LoadFromEnv()
+			*configPath = configPathEnv
 		}
 	}
 
+	// Загружаем конфигурацию
+	// Приоритет: переменные окружения > YAML файл > дефолтные значения
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
 	// Создаём приложение
-	application, err := app.New(cfg)
+	application, err := app.New(*cfg)
 	if err != nil {
 		log.Fatalf("Failed to create application: %v", err)
 	}
