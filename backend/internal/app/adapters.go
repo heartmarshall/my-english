@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/heartmarshall/my-english/internal/database/meaning"
-	"github.com/heartmarshall/my-english/internal/service/study"
+	"github.com/heartmarshall/my-english/internal/service/study/srs"
 )
 
 // --- SRS Adapter ---
@@ -20,14 +20,14 @@ func NewSRSAdapter(repo *meaning.Repo) *SRSAdapter {
 }
 
 // UpdateSRS реализует study.MeaningSRSRepository.
-func (a *SRSAdapter) UpdateSRS(ctx context.Context, id int64, srs *study.SRSUpdate) error {
-	// Конвертируем study.SRSUpdate в meaning.SRSUpdate
+func (a *SRSAdapter) UpdateSRS(ctx context.Context, id int64, update *srs.Update) error {
+	// Конвертируем srs.Update в meaning.SRSUpdate
 	meaningUpdate := &meaning.SRSUpdate{
-		LearningStatus: srs.LearningStatus,
-		NextReviewAt:   srs.NextReviewAt,
-		Interval:       srs.Interval,
-		EaseFactor:     srs.EaseFactor,
-		ReviewCount:    srs.ReviewCount,
+		LearningStatus: update.LearningStatus,
+		NextReviewAt:   update.NextReviewAt,
+		Interval:       update.Interval,
+		EaseFactor:     update.EaseFactor,
+		ReviewCount:    update.ReviewCount,
 	}
 	return a.repo.UpdateSRS(ctx, id, meaningUpdate)
 }

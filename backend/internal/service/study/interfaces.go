@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/heartmarshall/my-english/internal/model"
+	"github.com/heartmarshall/my-english/internal/service/study/srs"
 )
 
 // MeaningRepository определяет интерфейс для работы со значениями.
@@ -16,16 +17,7 @@ type MeaningRepository interface {
 
 // MeaningSRSRepository определяет интерфейс для обновления SRS данных.
 type MeaningSRSRepository interface {
-	UpdateSRS(ctx context.Context, id int64, srs *SRSUpdate) error
-}
-
-// SRSUpdate содержит поля для обновления SRS данных.
-type SRSUpdate struct {
-	LearningStatus model.LearningStatus
-	NextReviewAt   *time.Time
-	Interval       *int
-	EaseFactor     *float64
-	ReviewCount    *int
+	UpdateSRS(ctx context.Context, id int64, update *srs.Update) error
 }
 
 // Clock — интерфейс для получения времени (для тестирования).

@@ -10,6 +10,7 @@ import (
 	"github.com/heartmarshall/my-english/internal/model"
 	"github.com/heartmarshall/my-english/internal/service"
 	"github.com/heartmarshall/my-english/internal/service/study"
+	"github.com/heartmarshall/my-english/internal/service/study/srs"
 )
 
 func intPtr(i int) *int           { return &i }
@@ -31,7 +32,7 @@ func TestService_ReviewMeaning(t *testing.T) {
 			ReviewCount:    nil,
 		}
 
-		var capturedUpdate *study.SRSUpdate
+		var capturedUpdate *srs.Update
 
 		meaningRepo := &mockMeaningRepository{
 			GetByIDFunc: func(ctx context.Context, id int64) (model.Meaning, error) {
@@ -43,8 +44,8 @@ func TestService_ReviewMeaning(t *testing.T) {
 		}
 
 		srsRepo := &mockSRSRepository{
-			UpdateSRSFunc: func(ctx context.Context, id int64, srs *study.SRSUpdate) error {
-				capturedUpdate = srs
+			UpdateSRSFunc: func(ctx context.Context, id int64, update *srs.Update) error {
+				capturedUpdate = update
 				return nil
 			},
 		}
@@ -92,7 +93,7 @@ func TestService_ReviewMeaning(t *testing.T) {
 			ReviewCount:    intPtr(3),
 		}
 
-		var capturedUpdate *study.SRSUpdate
+		var capturedUpdate *srs.Update
 
 		meaningRepo := &mockMeaningRepository{
 			GetByIDFunc: func(ctx context.Context, id int64) (model.Meaning, error) {
@@ -101,8 +102,8 @@ func TestService_ReviewMeaning(t *testing.T) {
 		}
 
 		srsRepo := &mockSRSRepository{
-			UpdateSRSFunc: func(ctx context.Context, id int64, srs *study.SRSUpdate) error {
-				capturedUpdate = srs
+			UpdateSRSFunc: func(ctx context.Context, id int64, update *srs.Update) error {
+				capturedUpdate = update
 				return nil
 			},
 		}
@@ -203,7 +204,7 @@ func TestService_ReviewMeaning(t *testing.T) {
 		}
 
 		srsRepo := &mockSRSRepository{
-			UpdateSRSFunc: func(ctx context.Context, id int64, srs *study.SRSUpdate) error {
+			UpdateSRSFunc: func(ctx context.Context, id int64, update *srs.Update) error {
 				return nil
 			},
 		}
@@ -246,7 +247,7 @@ func TestService_ReviewMeaning(t *testing.T) {
 		}
 
 		srsRepo := &mockSRSRepository{
-			UpdateSRSFunc: func(ctx context.Context, id int64, srs *study.SRSUpdate) error {
+			UpdateSRSFunc: func(ctx context.Context, id int64, update *srs.Update) error {
 				return nil
 			},
 		}

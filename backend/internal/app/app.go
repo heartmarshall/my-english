@@ -11,19 +11,21 @@ import (
 	"time"
 
 	"github.com/heartmarshall/my-english/graph"
+	"github.com/heartmarshall/my-english/internal/config"
+	"github.com/heartmarshall/my-english/internal/transport/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // App — главная структура приложения.
 type App struct {
-	config Config
+	config config.Config
 	logger *slog.Logger
 	deps   *Dependencies
 	server *http.Server
 }
 
 // New создаёт новое приложение.
-func New(cfg Config) (*App, error) {
+func New(cfg config.Config) (*App, error) {
 	// Инициализация логгера
 	logger := NewLogger(cfg.Log)
 	slog.SetDefault(logger)
@@ -102,7 +104,7 @@ func (a *App) Shutdown() error {
 }
 
 // connectDB устанавливает соединение с базой данных через pgxpool.
-func connectDB(cfg DatabaseConfig, logger *slog.Logger) (*pgxpool.Pool, error) {
+func connectDB(cfg config.DatabaseConfig, logger *slog.Logger) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(cfg.DSN())
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse database config: %w", err)
@@ -134,7 +136,7 @@ func connectDB(cfg DatabaseConfig, logger *slog.Logger) (*pgxpool.Pool, error) {
 }
 
 // newHTTPServer создаёт HTTP сервер.
-func newHTTPServer(cfg Config, deps *Dependencies, logger *slog.Logger) *http.Server {
+func newHTTPServer(cfg config.Config, deps *Dependencies, logger *slog.Logger) *http.Server {
 	mux := http.NewServeMux()
 
 	// GraphQL handler
@@ -158,9 +160,9 @@ func newHTTPServer(cfg Config, deps *Dependencies, logger *slog.Logger) *http.Se
 
 	// Middleware chain (порядок: снаружи → внутрь)
 	// Recovery → Logging → Timeout → DataLoader → CORS → Handler
-	handler := RecoveryMiddleware(logger)(
-		LoggingMiddleware(logger)(
-			TimeoutMiddleware(cfg.Server.RequestTimeout)(
+	handler := middleware.RecoveryMiddleware(logger)(
+		middleware.LoggingMiddleware(logger)(
+			middleware.TimeoutMiddleware(cfg.Server.RequestTimeout)(
 				graph.DataLoaderMiddleware(loaderDeps)(
 					graph.CORSMiddleware(mux),
 				),

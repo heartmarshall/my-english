@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/heartmarshall/my-english/internal/model"
-	"github.com/heartmarshall/my-english/internal/service/study"
+	"github.com/heartmarshall/my-english/internal/service/study/srs"
 )
 
 // --- Mock Clock ---
@@ -48,12 +48,12 @@ func (m *mockMeaningRepository) GetStats(ctx context.Context) (*model.Stats, err
 }
 
 type mockSRSRepository struct {
-	UpdateSRSFunc func(ctx context.Context, id int64, srs *study.SRSUpdate) error
+	UpdateSRSFunc func(ctx context.Context, id int64, update *srs.Update) error
 }
 
-func (m *mockSRSRepository) UpdateSRS(ctx context.Context, id int64, srs *study.SRSUpdate) error {
+func (m *mockSRSRepository) UpdateSRS(ctx context.Context, id int64, update *srs.Update) error {
 	if m.UpdateSRSFunc != nil {
-		return m.UpdateSRSFunc(ctx, id, srs)
+		return m.UpdateSRSFunc(ctx, id, update)
 	}
 	return nil
 }
