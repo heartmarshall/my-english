@@ -32,13 +32,8 @@ CREATE INDEX idx_meanings_next_review_at ON meanings(next_review_at);
 CREATE INDEX idx_meanings_part_of_speech ON meanings(part_of_speech);
 
 -- Триггер для автоматического обновления updated_at
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
+-- Используем однострочный синтаксис для совместимости с goose
+CREATE OR REPLACE FUNCTION update_updated_at_column() RETURNS TRIGGER LANGUAGE plpgsql AS 'BEGIN NEW.updated_at = CURRENT_TIMESTAMP; RETURN NEW; END;';
 
 CREATE TRIGGER update_meanings_updated_at BEFORE UPDATE ON meanings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
