@@ -4,26 +4,8 @@ import (
 	"time"
 
 	"github.com/heartmarshall/my-english/internal/database"
-	"github.com/heartmarshall/my-english/internal/database/schema"
 	"github.com/heartmarshall/my-english/internal/model"
 )
-
-var columns = []string{
-	schema.MeaningColumns.ID.String(),
-	schema.MeaningColumns.WordID.String(),
-	schema.MeaningColumns.PartOfSpeech.String(),
-	schema.MeaningColumns.DefinitionEn.String(),
-	schema.MeaningColumns.TranslationRu.String(),
-	schema.MeaningColumns.CefrLevel.String(),
-	schema.MeaningColumns.ImageURL.String(),
-	schema.MeaningColumns.LearningStatus.String(),
-	schema.MeaningColumns.NextReviewAt.String(),
-	schema.MeaningColumns.Interval.String(),
-	schema.MeaningColumns.EaseFactor.String(),
-	schema.MeaningColumns.ReviewCount.String(),
-	schema.MeaningColumns.CreatedAt.String(),
-	schema.MeaningColumns.UpdatedAt.String(),
-}
 
 // Filter содержит параметры фильтрации для запросов поиска.
 type Filter struct {

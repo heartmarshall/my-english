@@ -11,9 +11,9 @@ import (
 
 func (r *Repo) GetByID(ctx context.Context, id int64) (model.Word, error) {
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Words.String()).
-		Where(schema.WordColumns.ID.Eq(id)).
+		Select(schema.Words.All()...).
+		From(schema.Words.Name.String()).
+		Where(schema.Words.ID.Eq(id)).
 		ToSql()
 	if err != nil {
 		return model.Word{}, err
@@ -28,9 +28,9 @@ func (r *Repo) GetByID(ctx context.Context, id int64) (model.Word, error) {
 
 func (r *Repo) GetByText(ctx context.Context, text string) (model.Word, error) {
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Words.String()).
-		Where(schema.WordColumns.Text.Eq(text)).
+		Select(schema.Words.All()...).
+		From(schema.Words.Name.String()).
+		Where(schema.Words.Text.Eq(text)).
 		ToSql()
 	if err != nil {
 		return model.Word{}, err
@@ -47,13 +47,13 @@ func (r *Repo) List(ctx context.Context, filter *model.WordFilter, limit, offset
 	limit, offset = database.NormalizePagination(limit, offset)
 
 	qb := database.Builder.
-		Select(columns...).
-		From(schema.Words.String())
+		Select(schema.Words.All()...).
+		From(schema.Words.Name.String())
 
 	qb = applyFilter(qb, filter)
 
 	qb = qb.
-		OrderBy(schema.WordColumns.CreatedAt.OrderByDESC()).
+		OrderBy(schema.Words.CreatedAt.Desc()).
 		Limit(uint64(limit)).
 		Offset(uint64(offset))
 
@@ -66,7 +66,7 @@ func (r *Repo) List(ctx context.Context, filter *model.WordFilter, limit, offset
 }
 
 func (r *Repo) Count(ctx context.Context, filter *model.WordFilter) (int, error) {
-	qb := database.Builder.Select("COUNT(*)").From(schema.Words.String())
+	qb := database.Builder.Select("COUNT(*)").From(schema.Words.Name.String())
 	qb = applyFilter(qb, filter)
 
 	query, args, err := qb.ToSql()
@@ -80,8 +80,8 @@ func (r *Repo) Count(ctx context.Context, filter *model.WordFilter) (int, error)
 func (r *Repo) Exists(ctx context.Context, id int64) (bool, error) {
 	query, args, err := database.Builder.
 		Select("1").
-		From(schema.Words.String()).
-		Where(schema.WordColumns.ID.Eq(id)).
+		From(schema.Words.Name.String()).
+		Where(schema.Words.ID.Eq(id)).
 		Limit(1).
 		ToSql()
 	if err != nil {
@@ -95,7 +95,7 @@ func applyFilter(qb squirrel.SelectBuilder, filter *model.WordFilter) squirrel.S
 		return qb
 	}
 	if filter.Search != nil && *filter.Search != "" {
-		return qb.Where(schema.WordColumns.Text.ILike("%" + *filter.Search + "%"))
+		return qb.Where(schema.Words.Text.ILike("%" + *filter.Search + "%"))
 	}
 	return qb
 }

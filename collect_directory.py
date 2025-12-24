@@ -10,7 +10,7 @@ from typing import Set, List
 # ==================== НАСТРОЙКИ ====================
 
 # Директория для сканирования (путь относительно скрипта или абсолютный путь)
-TARGET_DIRECTORY = "/home/alodi/playground/my-english/backend"
+TARGET_DIRECTORY = "/home/alodi/playground/my-english/backend/internal/database"
 
 # Имя выходного файла
 OUTPUT_FILE = "collected_content.txt"

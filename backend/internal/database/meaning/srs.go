@@ -14,10 +14,10 @@ func (r *Repo) GetDueForReview(ctx context.Context, limit int) ([]model.Meaning,
 	limit = database.NormalizeLimit(limit, database.DefaultSRSLimit)
 
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Meanings.String()).
-		Where(schema.MeaningColumns.NextReviewAt.Lt(r.clock.Now())).
-		OrderBy(schema.MeaningColumns.NextReviewAt.OrderByASC()).
+		Select(schema.Meanings.All()...).
+		From(schema.Meanings.Name.String()).
+		Where(schema.Meanings.NextReviewAt.Lt(r.clock.Now())).
+		OrderBy(schema.Meanings.NextReviewAt.Asc()).
 		Limit(uint64(limit)).
 		ToSql()
 	if err != nil {
@@ -32,10 +32,10 @@ func (r *Repo) GetByStatus(ctx context.Context, status model.LearningStatus, lim
 	limit = database.NormalizeLimit(limit, database.DefaultSRSLimit)
 
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Meanings.String()).
-		Where(schema.MeaningColumns.LearningStatus.Eq(status)).
-		OrderBy(schema.MeaningColumns.CreatedAt.OrderByASC()).
+		Select(schema.Meanings.All()...).
+		From(schema.Meanings.Name.String()).
+		Where(schema.Meanings.LearningStatus.Eq(status)).
+		OrderBy(schema.Meanings.CreatedAt.Asc()).
 		Limit(uint64(limit)).
 		ToSql()
 	if err != nil {
@@ -52,13 +52,13 @@ func (r *Repo) GetStudyQueue(ctx context.Context, limit int) ([]model.Meaning, e
 	now := r.clock.Now()
 
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Meanings.String()).
+		Select(schema.Meanings.All()...).
+		From(schema.Meanings.Name.String()).
 		Where(squirrel.Or{
-			schema.MeaningColumns.LearningStatus.Eq(model.LearningStatusNew),
-			schema.MeaningColumns.NextReviewAt.Lt(now),
+			schema.Meanings.LearningStatus.Eq(model.LearningStatusNew),
+			schema.Meanings.NextReviewAt.Lt(now),
 		}).
-		OrderBy("COALESCE(" + schema.MeaningColumns.NextReviewAt.String() + ", " + schema.MeaningColumns.CreatedAt.String() + ") ASC").
+		OrderBy("COALESCE(" + schema.Meanings.NextReviewAt.String() + ", " + schema.Meanings.CreatedAt.String() + ") ASC").
 		Limit(uint64(limit)).
 		ToSql()
 	if err != nil {
@@ -75,11 +75,11 @@ func (r *Repo) GetStats(ctx context.Context) (*model.Stats, error) {
 
 	query := `
 		SELECT 
-			COUNT(DISTINCT ` + schema.MeaningColumns.WordID.String() + `) as total_words,
-			COUNT(*) FILTER (WHERE ` + schema.MeaningColumns.LearningStatus.String() + ` = $1) as mastered_count,
-			COUNT(*) FILTER (WHERE ` + schema.MeaningColumns.LearningStatus.String() + ` = $2) as learning_count,
-			COUNT(*) FILTER (WHERE ` + schema.MeaningColumns.NextReviewAt.String() + ` < $3 OR ` + schema.MeaningColumns.LearningStatus.String() + ` = $4) as due_for_review_count
-		FROM ` + schema.Meanings.String() + `
+			COUNT(DISTINCT ` + schema.Meanings.WordID.String() + `) as total_words,
+			COUNT(*) FILTER (WHERE ` + schema.Meanings.LearningStatus.String() + ` = $1) as mastered_count,
+			COUNT(*) FILTER (WHERE ` + schema.Meanings.LearningStatus.String() + ` = $2) as learning_count,
+			COUNT(*) FILTER (WHERE ` + schema.Meanings.NextReviewAt.String() + ` < $3 OR ` + schema.Meanings.LearningStatus.String() + ` = $4) as due_for_review_count
+		FROM ` + schema.Meanings.Name.String() + `
 	`
 
 	return database.GetOne[model.Stats](ctx, r.q, query,
@@ -99,22 +99,22 @@ func (r *Repo) UpdateSRS(ctx context.Context, id int64, srs *SRSUpdate) error {
 	now := r.clock.Now()
 
 	qb := database.Builder.
-		Update(schema.Meanings.String()).
-		Set(schema.MeaningColumns.LearningStatus.String(), srs.LearningStatus).
-		Set(schema.MeaningColumns.UpdatedAt.String(), now).
-		Where(squirrel.Eq{schema.MeaningColumns.ID.String(): id})
+		Update(schema.Meanings.Name.String()).
+		Set(schema.Meanings.LearningStatus.Bare(), srs.LearningStatus).
+		Set(schema.Meanings.UpdatedAt.Bare(), now).
+		Where(schema.Meanings.ID.Eq(id))
 
 	if srs.NextReviewAt != nil {
-		qb = qb.Set(schema.MeaningColumns.NextReviewAt.String(), srs.NextReviewAt)
+		qb = qb.Set(schema.Meanings.NextReviewAt.Bare(), srs.NextReviewAt)
 	}
 	if srs.Interval != nil {
-		qb = qb.Set(schema.MeaningColumns.Interval.String(), srs.Interval)
+		qb = qb.Set(schema.Meanings.Interval.Bare(), srs.Interval)
 	}
 	if srs.EaseFactor != nil {
-		qb = qb.Set(schema.MeaningColumns.EaseFactor.String(), srs.EaseFactor)
+		qb = qb.Set(schema.Meanings.EaseFactor.Bare(), srs.EaseFactor)
 	}
 	if srs.ReviewCount != nil {
-		qb = qb.Set(schema.MeaningColumns.ReviewCount.String(), srs.ReviewCount)
+		qb = qb.Set(schema.Meanings.ReviewCount.Bare(), srs.ReviewCount)
 	}
 
 	query, args, err := qb.ToSql()

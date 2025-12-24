@@ -17,14 +17,8 @@ func (r *Repo) Create(ctx context.Context, word *model.Word) error {
 	now := r.clock.Now()
 
 	query, args, err := database.Builder.
-		Insert(schema.Words.String()).
-		Columns(
-			schema.WordColumns.Text.String(),
-			schema.WordColumns.Transcription.String(),
-			schema.WordColumns.AudioURL.String(),
-			schema.WordColumns.FrequencyRank.String(),
-			schema.WordColumns.CreatedAt.String(),
-		).
+		Insert(schema.Words.Name.String()).
+		Columns(schema.Words.InsertColumns()...).
 		Values(
 			word.Text,
 			word.Transcription,
@@ -32,7 +26,7 @@ func (r *Repo) Create(ctx context.Context, word *model.Word) error {
 			word.FrequencyRank,
 			now,
 		).
-		Suffix(schema.WordColumns.ID.Returning()).
+		Suffix("RETURNING " + schema.Words.ID.Bare()).
 		ToSql()
 	if err != nil {
 		return err
@@ -56,12 +50,12 @@ func (r *Repo) Update(ctx context.Context, word *model.Word) error {
 	text := strings.TrimSpace(strings.ToLower(word.Text))
 
 	query, args, err := database.Builder.
-		Update(schema.Words.String()).
-		Set(schema.WordColumns.Text.String(), text).
-		Set(schema.WordColumns.Transcription.String(), word.Transcription). // Прямая передача
-		Set(schema.WordColumns.AudioURL.String(), word.AudioURL).
-		Set(schema.WordColumns.FrequencyRank.String(), word.FrequencyRank).
-		Where(schema.WordColumns.ID.Eq(word.ID)).
+		Update(schema.Words.Name.String()).
+		Set(schema.Words.Text.Bare(), text).
+		Set(schema.Words.Transcription.Bare(), word.Transcription). // Прямая передача
+		Set(schema.Words.AudioURL.Bare(), word.AudioURL).
+		Set(schema.Words.FrequencyRank.Bare(), word.FrequencyRank).
+		Where(schema.Words.ID.Eq(word.ID)).
 		ToSql()
 	if err != nil {
 		return err
@@ -80,7 +74,7 @@ func (r *Repo) Update(ctx context.Context, word *model.Word) error {
 }
 
 func (r *Repo) Delete(ctx context.Context, id int64) error {
-	query, args, err := database.Builder.Delete(schema.Words.String()).Where(schema.WordColumns.ID.Eq(id)).ToSql()
+	query, args, err := database.Builder.Delete(schema.Words.Name.String()).Where(schema.Words.ID.Eq(id)).ToSql()
 	if err != nil {
 		return err
 	}

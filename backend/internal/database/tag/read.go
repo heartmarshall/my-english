@@ -11,9 +11,9 @@ import (
 // GetByID возвращает tag по ID.
 func (r *Repo) GetByID(ctx context.Context, id int64) (*model.Tag, error) {
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Tags.String()).
-		Where(schema.TagColumns.ID.Eq(id)).
+		Select(schema.Tags.All()...).
+		From(schema.Tags.Name.String()).
+		Where(schema.Tags.ID.Eq(id)).
 		ToSql()
 	if err != nil {
 		return nil, err
@@ -25,9 +25,9 @@ func (r *Repo) GetByID(ctx context.Context, id int64) (*model.Tag, error) {
 // GetByName возвращает tag по имени.
 func (r *Repo) GetByName(ctx context.Context, name string) (model.Tag, error) {
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Tags.String()).
-		Where(schema.TagColumns.Name.Eq(name)).
+		Select(schema.Tags.All()...).
+		From(schema.Tags.Name.String()).
+		Where(schema.Tags.NameCol.Eq(name)).
 		ToSql()
 	if err != nil {
 		return model.Tag{}, err
@@ -47,9 +47,9 @@ func (r *Repo) GetByNames(ctx context.Context, names []string) ([]model.Tag, err
 	}
 
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Tags.String()).
-		Where(schema.TagColumns.Name.In(names)).
+		Select(schema.Tags.All()...).
+		From(schema.Tags.Name.String()).
+		Where(schema.Tags.NameCol.In(names)).
 		ToSql()
 	if err != nil {
 		return nil, err
@@ -65,9 +65,9 @@ func (r *Repo) GetByIDs(ctx context.Context, ids []int64) ([]model.Tag, error) {
 	}
 
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Tags.String()).
-		Where(schema.TagColumns.ID.In(ids)).
+		Select(schema.Tags.All()...).
+		From(schema.Tags.Name.String()).
+		Where(schema.Tags.ID.In(ids)).
 		ToSql()
 	if err != nil {
 		return nil, err
@@ -79,9 +79,9 @@ func (r *Repo) GetByIDs(ctx context.Context, ids []int64) ([]model.Tag, error) {
 // List возвращает все tags.
 func (r *Repo) List(ctx context.Context) ([]model.Tag, error) {
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Tags.String()).
-		OrderBy(schema.TagColumns.Name.OrderByASC()).
+		Select(schema.Tags.All()...).
+		From(schema.Tags.Name.String()).
+		OrderBy(schema.Tags.NameCol.Asc()).
 		ToSql()
 	if err != nil {
 		return nil, err

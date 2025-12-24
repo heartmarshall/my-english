@@ -3,18 +3,7 @@ package word
 
 import (
 	"github.com/heartmarshall/my-english/internal/database"
-	"github.com/heartmarshall/my-english/internal/database/schema"
 )
-
-// columns — список колонок таблицы words.
-var columns = []string{
-	schema.WordColumns.ID.String(),
-	schema.WordColumns.Text.String(),
-	schema.WordColumns.Transcription.String(),
-	schema.WordColumns.AudioURL.String(),
-	schema.WordColumns.FrequencyRank.String(),
-	schema.WordColumns.CreatedAt.String(),
-}
 
 // Repo — реализация репозитория для PostgreSQL.
 type Repo struct {

@@ -12,9 +12,9 @@ import (
 // GetByID возвращает meaning по ID.
 func (r *Repo) GetByID(ctx context.Context, id int64) (model.Meaning, error) {
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Meanings.String()).
-		Where(schema.MeaningColumns.ID.Eq(id)).
+		Select(schema.Meanings.All()...).
+		From(schema.Meanings.Name.String()).
+		Where(schema.Meanings.ID.Eq(id)).
 		ToSql()
 	if err != nil {
 		return model.Meaning{}, err
@@ -30,10 +30,10 @@ func (r *Repo) GetByID(ctx context.Context, id int64) (model.Meaning, error) {
 // GetByWordID возвращает все meanings для указанного слова.
 func (r *Repo) GetByWordID(ctx context.Context, wordID int64) ([]model.Meaning, error) {
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Meanings.String()).
-		Where(schema.MeaningColumns.WordID.Eq(wordID)).
-		OrderBy(schema.MeaningColumns.CreatedAt.OrderByASC()).
+		Select(schema.Meanings.All()...).
+		From(schema.Meanings.Name.String()).
+		Where(schema.Meanings.WordID.Eq(wordID)).
+		OrderBy(schema.Meanings.CreatedAt.Asc()).
 		ToSql()
 	if err != nil {
 		return nil, err
@@ -49,10 +49,10 @@ func (r *Repo) GetByWordIDs(ctx context.Context, wordIDs []int64) ([]model.Meani
 	}
 
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Meanings.String()).
-		Where(schema.MeaningColumns.WordID.In(wordIDs)).
-		OrderBy(schema.MeaningColumns.WordID.OrderByASC(), schema.MeaningColumns.CreatedAt.OrderByASC()).
+		Select(schema.Meanings.All()...).
+		From(schema.Meanings.Name.String()).
+		Where(schema.Meanings.WordID.In(wordIDs)).
+		OrderBy(schema.Meanings.WordID.Asc(), schema.Meanings.CreatedAt.Asc()).
 		ToSql()
 	if err != nil {
 		return nil, err
@@ -66,13 +66,13 @@ func (r *Repo) List(ctx context.Context, filter *Filter, limit, offset int) ([]m
 	limit, offset = database.NormalizePagination(limit, offset)
 
 	qb := database.Builder.
-		Select(columns...).
-		From(schema.Meanings.String())
+		Select(schema.Meanings.All()...).
+		From(schema.Meanings.Name.String())
 
 	qb = applyFilter(qb, filter)
 
 	qb = qb.
-		OrderBy(schema.MeaningColumns.CreatedAt.OrderByDESC()).
+		OrderBy(schema.Meanings.CreatedAt.Desc()).
 		Limit(uint64(limit)).
 		Offset(uint64(offset))
 
@@ -86,7 +86,7 @@ func (r *Repo) List(ctx context.Context, filter *Filter, limit, offset int) ([]m
 
 // Count возвращает количество meanings, соответствующих фильтру.
 func (r *Repo) Count(ctx context.Context, filter *Filter) (int, error) {
-	qb := database.Builder.Select("COUNT(*)").From(schema.Meanings.String())
+	qb := database.Builder.Select("COUNT(*)").From(schema.Meanings.Name.String())
 	qb = applyFilter(qb, filter)
 
 	query, args, err := qb.ToSql()
@@ -101,8 +101,8 @@ func (r *Repo) Count(ctx context.Context, filter *Filter) (int, error) {
 func (r *Repo) Exists(ctx context.Context, id int64) (bool, error) {
 	query, args, err := database.Builder.
 		Select("1").
-		From(schema.Meanings.String()).
-		Where(schema.MeaningColumns.ID.Eq(id)).
+		From(schema.Meanings.Name.String()).
+		Where(schema.Meanings.ID.Eq(id)).
 		Limit(1).
 		ToSql()
 	if err != nil {
@@ -118,13 +118,13 @@ func applyFilter(qb squirrel.SelectBuilder, filter *Filter) squirrel.SelectBuild
 		return qb
 	}
 	if filter.WordID != nil {
-		qb = qb.Where(schema.MeaningColumns.WordID.Eq(*filter.WordID))
+		qb = qb.Where(schema.Meanings.WordID.Eq(*filter.WordID))
 	}
 	if filter.PartOfSpeech != nil {
-		qb = qb.Where(schema.MeaningColumns.PartOfSpeech.Eq(*filter.PartOfSpeech))
+		qb = qb.Where(schema.Meanings.PartOfSpeech.Eq(*filter.PartOfSpeech))
 	}
 	if filter.LearningStatus != nil {
-		qb = qb.Where(schema.MeaningColumns.LearningStatus.Eq(*filter.LearningStatus))
+		qb = qb.Where(schema.Meanings.LearningStatus.Eq(*filter.LearningStatus))
 	}
 	return qb
 }

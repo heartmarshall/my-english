@@ -21,10 +21,10 @@ func (r *Repo) Create(ctx context.Context, tag *model.Tag) error {
 	}
 
 	query, args, err := database.Builder.
-		Insert(schema.Tags.String()).
-		Columns(schema.TagColumns.Name.String()).
+		Insert(schema.Tags.Name.String()).
+		Columns(schema.Tags.NameCol.Bare()).
 		Values(name).
-		Suffix(schema.TagColumns.ID.Returning()).
+		Suffix("RETURNING " + schema.Tags.ID.Bare()).
 		ToSql()
 	if err != nil {
 		return err
@@ -72,8 +72,8 @@ func (r *Repo) GetOrCreate(ctx context.Context, name string) (model.Tag, error) 
 // Delete удаляет tag по ID.
 func (r *Repo) Delete(ctx context.Context, id int64) error {
 	query, args, err := database.Builder.
-		Delete(schema.Tags.String()).
-		Where(schema.TagColumns.ID.Eq(id)).
+		Delete(schema.Tags.Name.String()).
+		Where(schema.Tags.ID.Eq(id)).
 		ToSql()
 	if err != nil {
 		return err

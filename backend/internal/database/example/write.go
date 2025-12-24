@@ -16,12 +16,12 @@ func (r *Repo) Create(ctx context.Context, example *model.Example) error {
 	}
 
 	query, args, err := database.Builder.
-		Insert(schema.Examples.String()).
+		Insert(schema.Examples.Name.String()).
 		Columns(
-			schema.ExampleColumns.MeaningID.String(),
-			schema.ExampleColumns.SentenceEn.String(),
-			schema.ExampleColumns.SentenceRu.String(),
-			schema.ExampleColumns.SourceName.String(),
+			schema.Examples.MeaningID.Bare(),
+			schema.Examples.SentenceEn.Bare(),
+			schema.Examples.SentenceRu.Bare(),
+			schema.Examples.SourceName.Bare(),
 		).
 		Values(
 			example.MeaningID,
@@ -29,7 +29,7 @@ func (r *Repo) Create(ctx context.Context, example *model.Example) error {
 			example.SentenceRu,
 			example.SourceName,
 		).
-		Suffix(schema.ExampleColumns.ID.Returning()).
+		Suffix("RETURNING " + schema.Examples.ID.Bare()).
 		ToSql()
 	if err != nil {
 		return err
@@ -51,12 +51,12 @@ func (r *Repo) CreateBatch(ctx context.Context, examples []*model.Example) error
 	}
 
 	qb := database.Builder.
-		Insert(schema.Examples.String()).
+		Insert(schema.Examples.Name.String()).
 		Columns(
-			schema.ExampleColumns.MeaningID.String(),
-			schema.ExampleColumns.SentenceEn.String(),
-			schema.ExampleColumns.SentenceRu.String(),
-			schema.ExampleColumns.SourceName.String(),
+			schema.Examples.MeaningID.Bare(),
+			schema.Examples.SentenceEn.Bare(),
+			schema.Examples.SentenceRu.Bare(),
+			schema.Examples.SourceName.Bare(),
 		)
 
 	for _, ex := range examples {
@@ -71,7 +71,7 @@ func (r *Repo) CreateBatch(ctx context.Context, examples []*model.Example) error
 		)
 	}
 
-	qb = qb.Suffix("RETURNING " + schema.ExampleColumns.ID.String())
+	qb = qb.Suffix("RETURNING " + schema.Examples.ID.Bare())
 
 	query, args, err := qb.ToSql()
 	if err != nil {
@@ -84,15 +84,11 @@ func (r *Repo) CreateBatch(ctx context.Context, examples []*model.Example) error
 		return database.WrapDBError(err)
 	}
 
-	// pgx.CollectRows автоматически закрывает rows и обрабатывает ошибки сканирования.
-	// pgx.RowTo[int64] — эффективный маппер для одиночной колонки.
 	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
 	if err != nil {
 		return database.WrapDBError(err)
 	}
 
-	// Присваиваем полученные ID обратно в структуры
-	// Порядок RETURNING в PostgreSQL соответствует порядку VALUES (для INSERT).
 	for i, id := range ids {
 		if i < len(examples) {
 			examples[i].ID = id
@@ -109,11 +105,11 @@ func (r *Repo) Update(ctx context.Context, example *model.Example) error {
 	}
 
 	query, args, err := database.Builder.
-		Update(schema.Examples.String()).
-		Set(schema.ExampleColumns.SentenceEn.String(), example.SentenceEn).
-		Set(schema.ExampleColumns.SentenceRu.String(), example.SentenceRu).
-		Set(schema.ExampleColumns.SourceName.String(), example.SourceName).
-		Where(schema.ExampleColumns.ID.Eq(example.ID)).
+		Update(schema.Examples.Name.String()).
+		Set(schema.Examples.SentenceEn.Bare(), example.SentenceEn).
+		Set(schema.Examples.SentenceRu.Bare(), example.SentenceRu).
+		Set(schema.Examples.SourceName.Bare(), example.SourceName).
+		Where(schema.Examples.ID.Eq(example.ID)).
 		ToSql()
 	if err != nil {
 		return err
@@ -134,8 +130,8 @@ func (r *Repo) Update(ctx context.Context, example *model.Example) error {
 // Delete удаляет example по ID.
 func (r *Repo) Delete(ctx context.Context, id int64) error {
 	query, args, err := database.Builder.
-		Delete(schema.Examples.String()).
-		Where(schema.ExampleColumns.ID.Eq(id)).
+		Delete(schema.Examples.Name.String()).
+		Where(schema.Examples.ID.Eq(id)).
 		ToSql()
 	if err != nil {
 		return err
@@ -156,8 +152,8 @@ func (r *Repo) Delete(ctx context.Context, id int64) error {
 // DeleteByMeaningID удаляет все examples для указанного meaning.
 func (r *Repo) DeleteByMeaningID(ctx context.Context, meaningID int64) (int64, error) {
 	query, args, err := database.Builder.
-		Delete(schema.Examples.String()).
-		Where(schema.ExampleColumns.MeaningID.Eq(meaningID)).
+		Delete(schema.Examples.Name.String()).
+		Where(schema.Examples.MeaningID.Eq(meaningID)).
 		ToSql()
 	if err != nil {
 		return 0, err

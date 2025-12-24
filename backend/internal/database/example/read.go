@@ -11,9 +11,9 @@ import (
 // GetByID возвращает example по ID.
 func (r *Repo) GetByID(ctx context.Context, id int64) (*model.Example, error) {
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Examples.String()).
-		Where(schema.ExampleColumns.ID.Eq(id)).
+		Select(schema.Examples.All()...).
+		From(schema.Examples.Name.String()).
+		Where(schema.Examples.ID.Eq(id)).
 		ToSql()
 	if err != nil {
 		return nil, err
@@ -25,9 +25,9 @@ func (r *Repo) GetByID(ctx context.Context, id int64) (*model.Example, error) {
 // GetByMeaningID возвращает все examples для указанного meaning.
 func (r *Repo) GetByMeaningID(ctx context.Context, meaningID int64) ([]model.Example, error) {
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Examples.String()).
-		Where(schema.ExampleColumns.MeaningID.Eq(meaningID)).
+		Select(schema.Examples.All()...).
+		From(schema.Examples.Name.String()).
+		Where(schema.Examples.MeaningID.Eq(meaningID)).
 		ToSql()
 	if err != nil {
 		return nil, err
@@ -43,9 +43,9 @@ func (r *Repo) GetByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model
 	}
 
 	query, args, err := database.Builder.
-		Select(columns...).
-		From(schema.Examples.String()).
-		Where(schema.ExampleColumns.MeaningID.In(meaningIDs)).
+		Select(schema.Examples.All()...).
+		From(schema.Examples.Name.String()).
+		Where(schema.Examples.MeaningID.In(meaningIDs)).
 		ToSql()
 	if err != nil {
 		return nil, err
