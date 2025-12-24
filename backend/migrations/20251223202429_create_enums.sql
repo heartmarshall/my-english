@@ -11,8 +11,6 @@ CREATE TYPE part_of_speech AS ENUM ('noun', 'verb', 'adjective', 'adverb', 'othe
 CREATE TYPE example_source AS ENUM ('film', 'book', 'chat', 'video', 'podcast');
 
 -- +goose Down
--- Удаление ENUM типов
-
 DROP TYPE IF EXISTS example_source;
 DROP TYPE IF EXISTS part_of_speech;
 DROP TYPE IF EXISTS learning_status;

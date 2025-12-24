@@ -327,10 +327,10 @@ func WordWithRelationsToGraphQL(wr *word.WordWithRelations) *Word {
 
 	meanings := make([]*Meaning, 0, len(wr.Meanings))
 	for _, mr := range wr.Meanings {
-		meanings = append(meanings, MeaningWithRelationsToGraphQL(mr))
+		meanings = append(meanings, MeaningWithRelationsToGraphQL(&mr))
 	}
 
-	return ToGraphQLWord(wr.Word, meanings)
+	return ToGraphQLWord(&wr.Word, meanings)
 }
 
 // MeaningWithRelationsToGraphQL конвертирует MeaningWithRelations в GraphQL Meaning.
@@ -339,10 +339,19 @@ func MeaningWithRelationsToGraphQL(mr *word.MeaningWithRelations) *Meaning {
 		return nil
 	}
 
+	examples := make([]*model.Example, len(mr.Examples))
+	for i := range mr.Examples {
+		examples[i] = &mr.Examples[i]
+	}
+	tags := make([]*model.Tag, len(mr.Tags))
+	for i := range mr.Tags {
+		tags[i] = &mr.Tags[i]
+	}
+
 	return ToGraphQLMeaning(
-		mr.Meaning,
-		ToGraphQLExamples(mr.Examples),
-		ToGraphQLTags(mr.Tags),
+		&mr.Meaning,
+		ToGraphQLExamples(examples),
+		ToGraphQLTags(tags),
 	)
 }
 

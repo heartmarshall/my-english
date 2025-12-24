@@ -2,15 +2,12 @@ package tag
 
 import (
 	"github.com/heartmarshall/my-english/internal/database"
-)
-
-const (
-	tableName = "tags"
+	"github.com/heartmarshall/my-english/internal/database/schema"
 )
 
 var columns = []string{
-	"id",
-	"name",
+	schema.TagColumns.ID.String(),
+	schema.TagColumns.Name.String(),
 }
 
 // Repo — реализация репозитория для работы с tags.

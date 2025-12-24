@@ -17,7 +17,7 @@ func TestService_Update(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		now := time.Now()
-		existingWord := &model.Word{
+		existingWord := model.Word{
 			ID:        1,
 			Text:      "hello",
 			CreatedAt: now,
@@ -26,11 +26,11 @@ func TestService_Update(t *testing.T) {
 		var updatedWord *model.Word
 
 		wordRepo := &mockWordRepository{
-			GetByIDFunc: func(ctx context.Context, id int64) (*model.Word, error) {
+			GetByIDFunc: func(ctx context.Context, id int64) (model.Word, error) {
 				if id == 1 {
 					return existingWord, nil
 				}
-				return nil, database.ErrNotFound
+				return model.Word{}, database.ErrNotFound
 			},
 			UpdateFunc: func(ctx context.Context, w *model.Word) error {
 				updatedWord = w
@@ -98,8 +98,8 @@ func TestService_Update(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		wordRepo := &mockWordRepository{
-			GetByIDFunc: func(ctx context.Context, id int64) (*model.Word, error) {
-				return nil, database.ErrNotFound
+			GetByIDFunc: func(ctx context.Context, id int64) (model.Word, error) {
+				return model.Word{}, database.ErrNotFound
 			},
 		}
 
@@ -124,7 +124,7 @@ func TestService_Update(t *testing.T) {
 
 	t.Run("clear transcription", func(t *testing.T) {
 		transcription := "həˈloʊ"
-		existingWord := &model.Word{
+		existingWord := model.Word{
 			ID:            1,
 			Text:          "hello",
 			Transcription: &transcription,
@@ -133,7 +133,7 @@ func TestService_Update(t *testing.T) {
 		var updatedWord *model.Word
 
 		wordRepo := &mockWordRepository{
-			GetByIDFunc: func(ctx context.Context, id int64) (*model.Word, error) {
+			GetByIDFunc: func(ctx context.Context, id int64) (model.Word, error) {
 				return existingWord, nil
 			},
 			UpdateFunc: func(ctx context.Context, w *model.Word) error {
@@ -195,21 +195,21 @@ func TestService_Update(t *testing.T) {
 	})
 
 	t.Run("change text to already existing word", func(t *testing.T) {
-		existingWord := &model.Word{ID: 1, Text: "hello"}
-		anotherWord := &model.Word{ID: 2, Text: "world"}
+		existingWord := model.Word{ID: 1, Text: "hello"}
+		anotherWord := model.Word{ID: 2, Text: "world"}
 
 		wordRepo := &mockWordRepository{
-			GetByIDFunc: func(ctx context.Context, id int64) (*model.Word, error) {
+			GetByIDFunc: func(ctx context.Context, id int64) (model.Word, error) {
 				if id == 1 {
 					return existingWord, nil
 				}
-				return nil, database.ErrNotFound
+				return model.Word{}, database.ErrNotFound
 			},
-			GetByTextFunc: func(ctx context.Context, text string) (*model.Word, error) {
+			GetByTextFunc: func(ctx context.Context, text string) (model.Word, error) {
 				if text == "world" {
 					return anotherWord, nil
 				}
-				return nil, database.ErrNotFound
+				return model.Word{}, database.ErrNotFound
 			},
 		}
 

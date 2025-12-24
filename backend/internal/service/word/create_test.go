@@ -16,8 +16,8 @@ func TestService_Create(t *testing.T) {
 
 	t.Run("success with all data", func(t *testing.T) {
 		wordRepo := &mockWordRepository{
-			GetByTextFunc: func(ctx context.Context, text string) (*model.Word, error) {
-				return nil, database.ErrNotFound
+			GetByTextFunc: func(ctx context.Context, text string) (model.Word, error) {
+				return model.Word{}, database.ErrNotFound
 			},
 			CreateFunc: func(ctx context.Context, w *model.Word) error {
 				w.ID = 1
@@ -130,8 +130,8 @@ func TestService_Create(t *testing.T) {
 
 	t.Run("word already exists", func(t *testing.T) {
 		wordRepo := &mockWordRepository{
-			GetByTextFunc: func(ctx context.Context, text string) (*model.Word, error) {
-				return &model.Word{ID: 1, Text: "hello"}, nil
+			GetByTextFunc: func(ctx context.Context, text string) (model.Word, error) {
+				return model.Word{ID: 1, Text: "hello"}, nil
 			},
 		}
 
@@ -157,8 +157,8 @@ func TestService_Create(t *testing.T) {
 
 	t.Run("meaning without translation", func(t *testing.T) {
 		wordRepo := &mockWordRepository{
-			GetByTextFunc: func(ctx context.Context, text string) (*model.Word, error) {
-				return nil, database.ErrNotFound
+			GetByTextFunc: func(ctx context.Context, text string) (model.Word, error) {
+				return model.Word{}, database.ErrNotFound
 			},
 			CreateFunc: func(ctx context.Context, w *model.Word) error {
 				w.ID = 1

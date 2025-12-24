@@ -5,11 +5,11 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/heartmarshall/my-english/internal/database"
+	"github.com/heartmarshall/my-english/internal/database/schema"
 	"github.com/heartmarshall/my-english/internal/model"
 )
 
 // Create создаёт новое meaning в базе данных.
-// Возвращает database.ErrInvalidInput если meaning == nil или обязательные поля пустые.
 func (r *Repo) Create(ctx context.Context, meaning *model.Meaning) error {
 	if meaning == nil {
 		return database.ErrInvalidInput
@@ -30,28 +30,38 @@ func (r *Repo) Create(ctx context.Context, meaning *model.Meaning) error {
 	now := r.clock.Now()
 
 	query, args, err := database.Builder.
-		Insert(tableName).
+		Insert(schema.Meanings.String()).
 		Columns(
-			"word_id", "part_of_speech", "definition_en", "translation_ru",
-			"cefr_level", "image_url", "learning_status", "next_review_at",
-			"interval", "ease_factor", "review_count", "created_at", "updated_at",
+			schema.MeaningColumns.WordID.String(),
+			schema.MeaningColumns.PartOfSpeech.String(),
+			schema.MeaningColumns.DefinitionEn.String(),
+			schema.MeaningColumns.TranslationRu.String(),
+			schema.MeaningColumns.CefrLevel.String(),
+			schema.MeaningColumns.ImageURL.String(),
+			schema.MeaningColumns.LearningStatus.String(),
+			schema.MeaningColumns.NextReviewAt.String(),
+			schema.MeaningColumns.Interval.String(),
+			schema.MeaningColumns.EaseFactor.String(),
+			schema.MeaningColumns.ReviewCount.String(),
+			schema.MeaningColumns.CreatedAt.String(),
+			schema.MeaningColumns.UpdatedAt.String(),
 		).
 		Values(
 			meaning.WordID,
 			meaning.PartOfSpeech,
-			database.NullString(meaning.DefinitionEn),
+			meaning.DefinitionEn, // Прямая передача *string
 			meaning.TranslationRu,
-			database.NullString(meaning.CefrLevel),
-			database.NullString(meaning.ImageURL),
+			meaning.CefrLevel, // Прямая передача *string
+			meaning.ImageURL,  // Прямая передача *string
 			meaning.LearningStatus,
-			database.NullTime(meaning.NextReviewAt),
-			database.NullInt(meaning.Interval),
-			database.NullFloat(meaning.EaseFactor),
-			database.NullInt(meaning.ReviewCount),
+			meaning.NextReviewAt, // Прямая передача *time.Time
+			meaning.Interval,     // Прямая передача *int
+			meaning.EaseFactor,   // Прямая передача *float64
+			meaning.ReviewCount,  // Прямая передача *int
 			now,
 			now,
 		).
-		Suffix("RETURNING id").
+		Suffix(schema.MeaningColumns.ID.Returning()).
 		ToSql()
 	if err != nil {
 		return err
@@ -68,29 +78,23 @@ func (r *Repo) Create(ctx context.Context, meaning *model.Meaning) error {
 }
 
 // Update обновляет лингвистические поля meaning (не SRS).
-// Возвращает database.ErrInvalidInput если meaning == nil.
-// Возвращает database.ErrNotFound, если meaning не найден.
 func (r *Repo) Update(ctx context.Context, meaning *model.Meaning) error {
-	if meaning == nil {
-		return database.ErrInvalidInput
-	}
-
-	if meaning.TranslationRu == "" {
+	if meaning == nil || meaning.TranslationRu == "" {
 		return database.ErrInvalidInput
 	}
 
 	now := r.clock.Now()
 
 	query, args, err := database.Builder.
-		Update(tableName).
-		Set("word_id", meaning.WordID).
-		Set("part_of_speech", meaning.PartOfSpeech).
-		Set("definition_en", database.NullString(meaning.DefinitionEn)).
-		Set("translation_ru", meaning.TranslationRu).
-		Set("cefr_level", database.NullString(meaning.CefrLevel)).
-		Set("image_url", database.NullString(meaning.ImageURL)).
-		Set("updated_at", now).
-		Where(squirrel.Eq{"id": meaning.ID}).
+		Update(schema.Meanings.String()).
+		Set(schema.MeaningColumns.WordID.String(), meaning.WordID).
+		Set(schema.MeaningColumns.PartOfSpeech.String(), meaning.PartOfSpeech).
+		Set(schema.MeaningColumns.DefinitionEn.String(), meaning.DefinitionEn). // Прямая передача
+		Set(schema.MeaningColumns.TranslationRu.String(), meaning.TranslationRu).
+		Set(schema.MeaningColumns.CefrLevel.String(), meaning.CefrLevel). // Прямая передача
+		Set(schema.MeaningColumns.ImageURL.String(), meaning.ImageURL).   // Прямая передача
+		Set(schema.MeaningColumns.UpdatedAt.String(), now).
+		Where(squirrel.Eq{schema.MeaningColumns.ID.String(): meaning.ID}).
 		ToSql()
 	if err != nil {
 		return err
@@ -110,11 +114,10 @@ func (r *Repo) Update(ctx context.Context, meaning *model.Meaning) error {
 }
 
 // Delete удаляет meaning по ID.
-// Возвращает database.ErrNotFound, если meaning не найден.
 func (r *Repo) Delete(ctx context.Context, id int64) error {
 	query, args, err := database.Builder.
-		Delete(tableName).
-		Where(squirrel.Eq{"id": id}).
+		Delete(schema.Meanings.String()).
+		Where(squirrel.Eq{schema.MeaningColumns.ID.String(): id}).
 		ToSql()
 	if err != nil {
 		return err
@@ -124,20 +127,17 @@ func (r *Repo) Delete(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-
 	if commandTag.RowsAffected() == 0 {
 		return database.ErrNotFound
 	}
-
 	return nil
 }
 
 // DeleteByWordID удаляет все meanings для указанного слова.
-// Возвращает количество удалённых записей.
 func (r *Repo) DeleteByWordID(ctx context.Context, wordID int64) (int64, error) {
 	query, args, err := database.Builder.
-		Delete(tableName).
-		Where(squirrel.Eq{"word_id": wordID}).
+		Delete(schema.Meanings.String()).
+		Where(squirrel.Eq{schema.MeaningColumns.WordID.String(): wordID}).
 		ToSql()
 	if err != nil {
 		return 0, err

@@ -24,10 +24,10 @@ type Loaders struct {
 // LoaderService определяет интерфейс для batch-загрузки данных.
 // Реализуется сервисом loader.Service.
 type LoaderService interface {
-	GetMeaningsByWordIDs(ctx context.Context, wordIDs []int64) ([]*model.Meaning, error)
-	GetExamplesByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]*model.Example, error)
-	GetTagsByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]*model.MeaningTag, error)
-	GetTagsByIDs(ctx context.Context, ids []int64) ([]*model.Tag, error)
+	GetMeaningsByWordIDs(ctx context.Context, wordIDs []int64) ([]model.Meaning, error)
+	GetExamplesByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.Example, error)
+	GetTagsByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.MeaningTag, error)
+	GetTagsByIDs(ctx context.Context, ids []int64) ([]model.Tag, error)
 }
 
 // LoaderDeps — зависимости для DataLoaders.
@@ -67,7 +67,8 @@ func newMeaningBatchFunc(loader LoaderService) func(ctx context.Context, wordIDs
 
 		// Группируем по wordID
 		grouped := make(map[int64][]*model.Meaning)
-		for _, m := range meanings {
+		for i := range meanings {
+			m := &meanings[i]
 			grouped[m.WordID] = append(grouped[m.WordID], m)
 		}
 
@@ -101,7 +102,8 @@ func newExampleBatchFunc(loader LoaderService) func(ctx context.Context, meaning
 
 		// Группируем по meaningID
 		grouped := make(map[int64][]*model.Example)
-		for _, ex := range examples {
+		for i := range examples {
+			ex := &examples[i]
 			grouped[ex.MeaningID] = append(grouped[ex.MeaningID], ex)
 		}
 
@@ -134,8 +136,8 @@ func newTagBatchFunc(loader LoaderService) func(ctx context.Context, meaningIDs 
 
 		// Собираем уникальные tagIDs
 		tagIDSet := make(map[int64]struct{})
-		for _, mt := range meaningTags {
-			tagIDSet[mt.TagID] = struct{}{}
+		for i := range meaningTags {
+			tagIDSet[meaningTags[i].TagID] = struct{}{}
 		}
 
 		tagIDs := make([]int64, 0, len(tagIDSet))
@@ -156,7 +158,8 @@ func newTagBatchFunc(loader LoaderService) func(ctx context.Context, meaningIDs 
 			}
 
 			tagMap = make(map[int64]*model.Tag, len(tags))
-			for _, t := range tags {
+			for i := range tags {
+				t := &tags[i]
 				tagMap[t.ID] = t
 			}
 		} else {
@@ -165,7 +168,8 @@ func newTagBatchFunc(loader LoaderService) func(ctx context.Context, meaningIDs 
 
 		// Группируем теги по meaningID
 		grouped := make(map[int64][]*model.Tag)
-		for _, mt := range meaningTags {
+		for i := range meaningTags {
+			mt := &meaningTags[i]
 			if tag, ok := tagMap[mt.TagID]; ok {
 				grouped[mt.MeaningID] = append(grouped[mt.MeaningID], tag)
 			}

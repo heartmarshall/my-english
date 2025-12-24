@@ -50,7 +50,7 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateWordInput) (
 		word.Transcription = input.Transcription
 		word.AudioURL = input.AudioURL
 
-		if err := txRepos.words.Update(ctx, word); err != nil {
+		if err := txRepos.words.Update(ctx, &word); err != nil {
 			if errors.Is(err, database.ErrDuplicate) {
 				return service.ErrWordAlreadyExists
 			}
@@ -65,7 +65,7 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateWordInput) (
 		// Создаём новые meanings
 		result = &WordWithRelations{
 			Word:     word,
-			Meanings: make([]*MeaningWithRelations, 0, len(input.Meanings)),
+			Meanings: make([]MeaningWithRelations, 0, len(input.Meanings)),
 		}
 
 		for _, meaningInput := range input.Meanings {
@@ -83,7 +83,7 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateWordInput) (
 			if err != nil {
 				return err
 			}
-			result.Meanings = append(result.Meanings, mr)
+			result.Meanings = append(result.Meanings, *mr)
 		}
 
 		return nil

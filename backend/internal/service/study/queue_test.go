@@ -16,8 +16,8 @@ func TestService_GetStudyQueue(t *testing.T) {
 		now := time.Now()
 
 		meaningRepo := &mockMeaningRepository{
-			GetStudyQueueFunc: func(ctx context.Context, limit int) ([]*model.Meaning, error) {
-				return []*model.Meaning{
+			GetStudyQueueFunc: func(ctx context.Context, limit int) ([]model.Meaning, error) {
+				return []model.Meaning{
 					{ID: 1, WordID: 1, TranslationRu: "привет", LearningStatus: model.LearningStatusNew},
 					{ID: 2, WordID: 1, TranslationRu: "здравствуй", LearningStatus: model.LearningStatusLearning},
 				}, nil
@@ -44,9 +44,9 @@ func TestService_GetStudyQueue(t *testing.T) {
 		var capturedLimit int
 
 		meaningRepo := &mockMeaningRepository{
-			GetStudyQueueFunc: func(ctx context.Context, limit int) ([]*model.Meaning, error) {
+			GetStudyQueueFunc: func(ctx context.Context, limit int) ([]model.Meaning, error) {
 				capturedLimit = limit
-				return []*model.Meaning{}, nil
+				return []model.Meaning{}, nil
 			},
 		}
 

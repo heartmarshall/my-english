@@ -2,18 +2,15 @@ package example
 
 import (
 	"github.com/heartmarshall/my-english/internal/database"
-)
-
-const (
-	tableName = "examples"
+	"github.com/heartmarshall/my-english/internal/database/schema"
 )
 
 var columns = []string{
-	"id",
-	"meaning_id",
-	"sentence_en",
-	"sentence_ru",
-	"source_name",
+	schema.ExampleColumns.ID.String(),
+	schema.ExampleColumns.MeaningID.String(),
+	schema.ExampleColumns.SentenceEn.String(),
+	schema.ExampleColumns.SentenceRu.String(),
+	schema.ExampleColumns.SourceName.String(),
 }
 
 // Repo — реализация репозитория для работы с examples.

@@ -37,7 +37,7 @@ func (s *Service) GetByText(ctx context.Context, text string) (*WordWithRelation
 
 // List возвращает список слов с пагинацией.
 // Возвращает слова без связанных данных (для списка).
-func (s *Service) List(ctx context.Context, filter *WordFilter, limit, offset int) ([]*model.Word, error) {
+func (s *Service) List(ctx context.Context, filter *WordFilter, limit, offset int) ([]model.Word, error) {
 	var modelFilter *model.WordFilter
 	if filter != nil {
 		modelFilter = &model.WordFilter{
@@ -61,7 +61,7 @@ func (s *Service) Count(ctx context.Context, filter *WordFilter) (int, error) {
 }
 
 // loadRelations загружает связанные данные для слова.
-func (s *Service) loadRelations(ctx context.Context, word *model.Word) (*WordWithRelations, error) {
+func (s *Service) loadRelations(ctx context.Context, word model.Word) (*WordWithRelations, error) {
 	meanings, err := s.meanings.GetByWordID(ctx, word.ID)
 	if err != nil {
 		return nil, err
@@ -69,7 +69,7 @@ func (s *Service) loadRelations(ctx context.Context, word *model.Word) (*WordWit
 
 	result := &WordWithRelations{
 		Word:     word,
-		Meanings: make([]*MeaningWithRelations, 0, len(meanings)),
+		Meanings: make([]MeaningWithRelations, 0, len(meanings)),
 	}
 
 	if len(meanings) == 0 {
@@ -106,7 +106,7 @@ func (s *Service) loadRelations(ctx context.Context, word *model.Word) (*WordWit
 	}
 
 	// Загружаем теги
-	var tags []*model.Tag
+	var tags []model.Tag
 	if len(tagIDs) > 0 {
 		tags, err = s.tags.GetByIDs(ctx, tagIDs)
 		if err != nil {
@@ -115,12 +115,12 @@ func (s *Service) loadRelations(ctx context.Context, word *model.Word) (*WordWit
 	}
 
 	// Создаём мапы для быстрого доступа
-	examplesByMeaning := make(map[int64][]*model.Example)
+	examplesByMeaning := make(map[int64][]model.Example)
 	for _, ex := range examples {
 		examplesByMeaning[ex.MeaningID] = append(examplesByMeaning[ex.MeaningID], ex)
 	}
 
-	tagsByID := make(map[int64]*model.Tag)
+	tagsByID := make(map[int64]model.Tag)
 	for _, t := range tags {
 		tagsByID[t.ID] = t
 	}
@@ -132,14 +132,14 @@ func (s *Service) loadRelations(ctx context.Context, word *model.Word) (*WordWit
 
 	// Собираем результат
 	for _, m := range meanings {
-		mr := &MeaningWithRelations{
+		mr := MeaningWithRelations{
 			Meaning:  m,
 			Examples: examplesByMeaning[m.ID],
-			Tags:     make([]*model.Tag, 0),
+			Tags:     make([]model.Tag, 0),
 		}
 
 		if mr.Examples == nil {
-			mr.Examples = make([]*model.Example, 0)
+			mr.Examples = make([]model.Example, 0)
 		}
 
 		for _, tagID := range tagIDsByMeaning[m.ID] {
@@ -155,8 +155,8 @@ func (s *Service) loadRelations(ctx context.Context, word *model.Word) (*WordWit
 }
 
 // LoadMeaningsForWords загружает meanings для списка слов (для batch loading в GraphQL).
-func (s *Service) LoadMeaningsForWords(ctx context.Context, wordIDs []int64) (map[int64][]*model.Meaning, error) {
-	result := make(map[int64][]*model.Meaning)
+func (s *Service) LoadMeaningsForWords(ctx context.Context, wordIDs []int64) (map[int64][]model.Meaning, error) {
+	result := make(map[int64][]model.Meaning)
 
 	for _, wordID := range wordIDs {
 		meanings, err := s.meanings.GetByWordID(ctx, wordID)

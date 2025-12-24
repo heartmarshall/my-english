@@ -14,7 +14,7 @@ type WordService interface {
 	Create(ctx context.Context, input word.CreateWordInput) (*word.WordWithRelations, error)
 	GetByID(ctx context.Context, id int64) (*word.WordWithRelations, error)
 	GetByText(ctx context.Context, text string) (*word.WordWithRelations, error)
-	List(ctx context.Context, filter *word.WordFilter, limit, offset int) ([]*model.Word, error)
+	List(ctx context.Context, filter *word.WordFilter, limit, offset int) ([]model.Word, error)
 	Count(ctx context.Context, filter *word.WordFilter) (int, error)
 	Update(ctx context.Context, id int64, input word.UpdateWordInput) (*word.WordWithRelations, error)
 	Delete(ctx context.Context, id int64) error
@@ -22,9 +22,9 @@ type WordService interface {
 
 // StudyService определяет интерфейс для системы изучения.
 type StudyService interface {
-	GetStudyQueue(ctx context.Context, limit int) ([]*model.Meaning, error)
+	GetStudyQueue(ctx context.Context, limit int) ([]model.Meaning, error)
 	GetStats(ctx context.Context) (*model.Stats, error)
-	ReviewMeaning(ctx context.Context, meaningID int64, grade int) (*model.Meaning, error)
+	ReviewMeaning(ctx context.Context, meaningID int64, grade int) (model.Meaning, error)
 }
 
 // Deps — зависимости для резолвера.

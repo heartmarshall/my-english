@@ -5,125 +5,92 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/heartmarshall/my-english/internal/database"
+	"github.com/heartmarshall/my-english/internal/database/schema"
 	"github.com/heartmarshall/my-english/internal/model"
 )
 
 // GetDueForReview возвращает meanings, которые нужно повторить (next_review_at < NOW()).
-func (r *Repo) GetDueForReview(ctx context.Context, limit int) ([]*model.Meaning, error) {
+func (r *Repo) GetDueForReview(ctx context.Context, limit int) ([]model.Meaning, error) {
 	limit = database.NormalizeLimit(limit, database.DefaultSRSLimit)
 
 	query, args, err := database.Builder.
 		Select(columns...).
-		From(tableName).
-		Where(squirrel.Lt{"next_review_at": r.clock.Now()}).
-		OrderBy("next_review_at ASC").
+		From(schema.Meanings.String()).
+		Where(schema.MeaningColumns.NextReviewAt.Lt(r.clock.Now())).
+		OrderBy(schema.MeaningColumns.NextReviewAt.OrderByASC()).
 		Limit(uint64(limit)).
 		ToSql()
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err := r.q.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	return r.scanRows(rows)
+	return database.Select[model.Meaning](ctx, r.q, query, args...)
 }
 
 // GetByStatus возвращает meanings с указанным статусом обучения.
-func (r *Repo) GetByStatus(ctx context.Context, status model.LearningStatus, limit int) ([]*model.Meaning, error) {
+func (r *Repo) GetByStatus(ctx context.Context, status model.LearningStatus, limit int) ([]model.Meaning, error) {
 	limit = database.NormalizeLimit(limit, database.DefaultSRSLimit)
 
 	query, args, err := database.Builder.
 		Select(columns...).
-		From(tableName).
-		Where(squirrel.Eq{"learning_status": status}).
-		OrderBy("created_at ASC").
+		From(schema.Meanings.String()).
+		Where(schema.MeaningColumns.LearningStatus.Eq(status)).
+		OrderBy(schema.MeaningColumns.CreatedAt.OrderByASC()).
 		Limit(uint64(limit)).
 		ToSql()
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err := r.q.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	return r.scanRows(rows)
+	return database.Select[model.Meaning](ctx, r.q, query, args...)
 }
 
-// GetStudyQueue возвращает очередь для изучения:
-// meanings со статусом NEW или next_review_at < NOW().
-func (r *Repo) GetStudyQueue(ctx context.Context, limit int) ([]*model.Meaning, error) {
+// GetStudyQueue возвращает очередь для изучения.
+func (r *Repo) GetStudyQueue(ctx context.Context, limit int) ([]model.Meaning, error) {
 	limit = database.NormalizeLimit(limit, database.DefaultSRSLimit)
 
 	now := r.clock.Now()
 
 	query, args, err := database.Builder.
 		Select(columns...).
-		From(tableName).
+		From(schema.Meanings.String()).
 		Where(squirrel.Or{
-			squirrel.Eq{"learning_status": model.LearningStatusNew},
-			squirrel.Lt{"next_review_at": now},
+			schema.MeaningColumns.LearningStatus.Eq(model.LearningStatusNew),
+			schema.MeaningColumns.NextReviewAt.Lt(now),
 		}).
-		OrderBy("COALESCE(next_review_at, created_at) ASC").
+		OrderBy("COALESCE(" + schema.MeaningColumns.NextReviewAt.String() + ", " + schema.MeaningColumns.CreatedAt.String() + ") ASC").
 		Limit(uint64(limit)).
 		ToSql()
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err := r.q.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	return r.scanRows(rows)
+	return database.Select[model.Meaning](ctx, r.q, query, args...)
 }
 
-// GetStats возвращает статистику по изучению слов.
-// Использует один эффективный запрос с FILTER.
+// GetStats возвращает статистику.
+// Используем SQL Aliases (as total_words), чтобы scany мог замапить колонки на поля структуры Stats.
 func (r *Repo) GetStats(ctx context.Context) (*model.Stats, error) {
 	now := r.clock.Now()
 
-	// Используем raw SQL, так как squirrel не поддерживает FILTER синтаксис.
-	const query = `
+	query := `
 		SELECT 
-			COUNT(DISTINCT word_id),
-			COUNT(*) FILTER (WHERE learning_status = $1),
-			COUNT(*) FILTER (WHERE learning_status = $2),
-			COUNT(*) FILTER (WHERE next_review_at < $3 OR learning_status = $4)
-		FROM meanings
+			COUNT(DISTINCT ` + schema.MeaningColumns.WordID.String() + `) as total_words,
+			COUNT(*) FILTER (WHERE ` + schema.MeaningColumns.LearningStatus.String() + ` = $1) as mastered_count,
+			COUNT(*) FILTER (WHERE ` + schema.MeaningColumns.LearningStatus.String() + ` = $2) as learning_count,
+			COUNT(*) FILTER (WHERE ` + schema.MeaningColumns.NextReviewAt.String() + ` < $3 OR ` + schema.MeaningColumns.LearningStatus.String() + ` = $4) as due_for_review_count
+		FROM ` + schema.Meanings.String() + `
 	`
 
-	var stats model.Stats
-	err := r.q.QueryRow(ctx, query,
+	return database.GetOne[model.Stats](ctx, r.q, query,
 		model.LearningStatusMastered,
 		model.LearningStatusLearning,
 		now,
 		model.LearningStatusNew,
-	).Scan(
-		&stats.TotalWords,
-		&stats.MasteredCount,
-		&stats.LearningCount,
-		&stats.DueForReviewCount,
 	)
-	if err != nil {
-		return nil, err
-	}
-
-	return &stats, nil
 }
 
 // UpdateSRS обновляет только SRS-поля meaning.
-// Бизнес-логика расчёта новых значений должна быть в сервисном слое.
-// Возвращает database.ErrInvalidInput если srs == nil.
-// Возвращает database.ErrNotFound, если meaning не найден.
 func (r *Repo) UpdateSRS(ctx context.Context, id int64, srs *SRSUpdate) error {
 	if srs == nil {
 		return database.ErrInvalidInput
@@ -132,23 +99,22 @@ func (r *Repo) UpdateSRS(ctx context.Context, id int64, srs *SRSUpdate) error {
 	now := r.clock.Now()
 
 	qb := database.Builder.
-		Update(tableName).
-		Set("learning_status", srs.LearningStatus).
-		Set("updated_at", now).
-		Where(squirrel.Eq{"id": id})
+		Update(schema.Meanings.String()).
+		Set(schema.MeaningColumns.LearningStatus.String(), srs.LearningStatus).
+		Set(schema.MeaningColumns.UpdatedAt.String(), now).
+		Where(squirrel.Eq{schema.MeaningColumns.ID.String(): id})
 
-	// Опционально обновляем поля, если они заданы
 	if srs.NextReviewAt != nil {
-		qb = qb.Set("next_review_at", database.NullTime(srs.NextReviewAt))
+		qb = qb.Set(schema.MeaningColumns.NextReviewAt.String(), srs.NextReviewAt)
 	}
 	if srs.Interval != nil {
-		qb = qb.Set("interval", *srs.Interval)
+		qb = qb.Set(schema.MeaningColumns.Interval.String(), srs.Interval)
 	}
 	if srs.EaseFactor != nil {
-		qb = qb.Set("ease_factor", *srs.EaseFactor)
+		qb = qb.Set(schema.MeaningColumns.EaseFactor.String(), srs.EaseFactor)
 	}
 	if srs.ReviewCount != nil {
-		qb = qb.Set("review_count", *srs.ReviewCount)
+		qb = qb.Set(schema.MeaningColumns.ReviewCount.String(), srs.ReviewCount)
 	}
 
 	query, args, err := qb.ToSql()

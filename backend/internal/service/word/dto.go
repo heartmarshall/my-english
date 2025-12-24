@@ -56,13 +56,13 @@ type WordFilter struct {
 
 // WordWithRelations — слово со всеми связанными данными.
 type WordWithRelations struct {
-	Word     *model.Word
-	Meanings []*MeaningWithRelations
+	Word     model.Word
+	Meanings []MeaningWithRelations
 }
 
 // MeaningWithRelations — значение со всеми связанными данными.
 type MeaningWithRelations struct {
-	Meaning  *model.Meaning
-	Examples []*model.Example
-	Tags     []*model.Tag
+	Meaning  model.Meaning
+	Examples []model.Example
+	Tags     []model.Tag
 }

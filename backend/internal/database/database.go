@@ -1,5 +1,3 @@
-// Package database предоставляет слой доступа к данным.
-// Содержит репозитории для работы с PostgreSQL.
 package database
 
 import (
@@ -7,85 +5,46 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Pagination defaults — константы для пагинации.
+// Pagination defaults
 const (
-	DefaultLimit    = 20  // Лимит по умолчанию для списков
-	MaxLimit        = 100 // Максимальный лимит
-	DefaultSRSLimit = 10  // Лимит по умолчанию для SRS очереди
+	DefaultLimit    = 20
+	MaxLimit        = 100
+	DefaultSRSLimit = 10
 )
 
-// Querier — абстракция над pgxpool.Pool и pgx.Tx.
-// Позволяет использовать репозитории как с прямым подключением,
-// так и в рамках транзакции.
 type Querier interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// Compile-time проверки, что pgxpool.Pool и pgx.Tx реализуют Querier.
 var (
 	_ Querier = (*pgxpool.Pool)(nil)
 	_ Querier = (pgx.Tx)(nil)
 )
 
-// Builder — squirrel builder с PostgreSQL плейсхолдерами ($1, $2, ...).
 var Builder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
 
-// Clock — интерфейс для получения текущего времени.
-// Позволяет инжектить time.Now() для тестирования.
 type Clock interface {
 	Now() time.Time
 }
 
-// RealClock — реальная реализация Clock.
 type RealClock struct{}
 
-// Now возвращает текущее время.
 func (RealClock) Now() time.Time {
 	return time.Now()
 }
 
-// DefaultClock — clock по умолчанию для продакшена.
 var DefaultClock Clock = RealClock{}
 
-// NormalizePagination нормализует параметры пагинации.
-// limit: [1, MaxLimit], offset: >= 0
-func NormalizePagination(limit, offset int) (int, int) {
-	if limit <= 0 {
-		limit = DefaultLimit
-	}
-	if limit > MaxLimit {
-		limit = MaxLimit
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	return limit, offset
-}
-
-// NormalizeLimit нормализует только limit с указанным значением по умолчанию.
-func NormalizeLimit(limit, defaultVal int) int {
-	if limit <= 0 {
-		limit = defaultVal
-	}
-	if limit > MaxLimit {
-		limit = MaxLimit
-	}
-	return limit
-}
-
-// TxFunc — функция, выполняемая в рамках транзакции.
 type TxFunc func(ctx context.Context, q Querier) error
 
-// WithTx выполняет функцию fn в рамках транзакции.
-// Если fn возвращает ошибку или возникает паника — транзакция откатывается.
-// Иначе — коммитится.
 func WithTx(ctx context.Context, pool *pgxpool.Pool, fn TxFunc) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -105,4 +64,89 @@ func WithTx(ctx context.Context, pool *pgxpool.Pool, fn TxFunc) error {
 	}
 
 	return tx.Commit(ctx)
+}
+
+// --- Scany Helpers ---
+
+// GetOne сканирует одну структуру.
+func GetOne[T any](ctx context.Context, q Querier, sql string, args ...any) (*T, error) {
+	var dest T
+	err := pgxscan.Get(ctx, q, &dest, sql, args...)
+	if err != nil {
+		if pgxscan.NotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &dest, nil
+}
+
+// Select сканирует список структур. Возвращает []*T.
+func Select[T any](ctx context.Context, q Querier, sql string, args ...any) ([]T, error) {
+	var dest []T // Слайс значений
+	err := pgxscan.Select(ctx, q, &dest, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	return dest, nil
+}
+
+// GetScalar сканирует одно скалярное значение (int, string, bool).
+func GetScalar[T any](ctx context.Context, q Querier, sql string, args ...any) (T, error) {
+	var dest T
+	err := pgxscan.Get(ctx, q, &dest, sql, args...)
+	if err != nil {
+		if pgxscan.NotFound(err) {
+			return dest, nil
+		}
+		return dest, err
+	}
+	return dest, nil
+}
+
+// SelectScalars сканирует список скалярных значений (например, []int64).
+func SelectScalars[T any](ctx context.Context, q Querier, sql string, args ...any) ([]T, error) {
+	var dest []T
+	err := pgxscan.Select(ctx, q, &dest, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	return dest, nil
+}
+
+// CheckExists проверяет наличие строки.
+func CheckExists(ctx context.Context, q Querier, sql string, args ...any) (bool, error) {
+	var dummy int
+	err := pgxscan.Get(ctx, q, &dummy, sql, args...)
+	if err != nil {
+		if pgxscan.NotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func NormalizePagination(limit, offset int) (int, int) {
+	if limit <= 0 {
+		limit = DefaultLimit
+	}
+
+	if limit > MaxLimit {
+		limit = MaxLimit
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return limit, offset
+}
+
+func NormalizeLimit(limit, defaultVal int) int {
+	if limit <= 0 {
+		limit = defaultVal
+	}
+	if limit > MaxLimit {
+		limit = MaxLimit
+	}
+	return limit
 }

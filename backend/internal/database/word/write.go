@@ -4,84 +4,74 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/heartmarshall/my-english/internal/database"
+	"github.com/heartmarshall/my-english/internal/database/schema"
 	"github.com/heartmarshall/my-english/internal/model"
 )
 
-// Create создаёт новое слово в базе данных.
-// Возвращает database.ErrInvalidInput если word == nil или word.Text пустой.
-// Возвращает database.ErrDuplicate если слово уже существует.
 func (r *Repo) Create(ctx context.Context, word *model.Word) error {
-	if word == nil {
-		return database.ErrInvalidInput
-	}
-
-	text := strings.TrimSpace(strings.ToLower(word.Text))
-	if text == "" {
+	if word == nil || strings.TrimSpace(word.Text) == "" {
 		return database.ErrInvalidInput
 	}
 
 	now := r.clock.Now()
 
 	query, args, err := database.Builder.
-		Insert(tableName).
-		Columns("text", "transcription", "audio_url", "frequency_rank", "created_at").
+		Insert(schema.Words.String()).
+		Columns(
+			schema.WordColumns.Text.String(),
+			schema.WordColumns.Transcription.String(),
+			schema.WordColumns.AudioURL.String(),
+			schema.WordColumns.FrequencyRank.String(),
+			schema.WordColumns.CreatedAt.String(),
+		).
 		Values(
-			text,
-			database.NullString(word.Transcription),
-			database.NullString(word.AudioURL),
-			database.NullInt(word.FrequencyRank),
+			word.Text,
+			word.Transcription,
+			word.AudioURL,
+			word.FrequencyRank,
 			now,
 		).
-		Suffix("RETURNING id").
+		Suffix(schema.WordColumns.ID.Returning()).
 		ToSql()
 	if err != nil {
 		return err
 	}
 
+	// Для возврата ID используем стандартный Scan, так как это одно поле
 	err = r.q.QueryRow(ctx, query, args...).Scan(&word.ID)
 	if err != nil {
 		return database.WrapDBError(err)
 	}
 
-	word.Text = text
 	word.CreatedAt = now
 	return nil
 }
 
-// Update обновляет существующее слово.
-// Возвращает database.ErrInvalidInput если word == nil.
-// Возвращает database.ErrNotFound, если слово не найдено.
-// Возвращает database.ErrDuplicate если новый текст уже существует.
 func (r *Repo) Update(ctx context.Context, word *model.Word) error {
-	if word == nil {
+	if word == nil || strings.TrimSpace(word.Text) == "" {
 		return database.ErrInvalidInput
 	}
 
 	text := strings.TrimSpace(strings.ToLower(word.Text))
-	if text == "" {
-		return database.ErrInvalidInput
-	}
 
 	query, args, err := database.Builder.
-		Update(tableName).
-		Set("text", text).
-		Set("transcription", database.NullString(word.Transcription)).
-		Set("audio_url", database.NullString(word.AudioURL)).
-		Set("frequency_rank", database.NullInt(word.FrequencyRank)).
-		Where(squirrel.Eq{"id": word.ID}).
+		Update(schema.Words.String()).
+		Set(schema.WordColumns.Text.String(), text).
+		Set(schema.WordColumns.Transcription.String(), word.Transcription). // Прямая передача
+		Set(schema.WordColumns.AudioURL.String(), word.AudioURL).
+		Set(schema.WordColumns.FrequencyRank.String(), word.FrequencyRank).
+		Where(schema.WordColumns.ID.Eq(word.ID)).
 		ToSql()
 	if err != nil {
 		return err
 	}
 
-	commandTag, err := r.q.Exec(ctx, query, args...)
+	cmd, err := r.q.Exec(ctx, query, args...)
 	if err != nil {
 		return database.WrapDBError(err)
 	}
-
-	if commandTag.RowsAffected() == 0 {
+	if cmd.RowsAffected() == 0 {
 		return database.ErrNotFound
 	}
 
@@ -89,25 +79,17 @@ func (r *Repo) Update(ctx context.Context, word *model.Word) error {
 	return nil
 }
 
-// Delete удаляет слово по ID.
-// Возвращает database.ErrNotFound, если слово не найдено.
 func (r *Repo) Delete(ctx context.Context, id int64) error {
-	query, args, err := database.Builder.
-		Delete(tableName).
-		Where(squirrel.Eq{"id": id}).
-		ToSql()
+	query, args, err := database.Builder.Delete(schema.Words.String()).Where(schema.WordColumns.ID.Eq(id)).ToSql()
 	if err != nil {
 		return err
 	}
-
-	commandTag, err := r.q.Exec(ctx, query, args...)
+	cmd, err := r.q.Exec(ctx, query, args...)
 	if err != nil {
 		return err
 	}
-
-	if commandTag.RowsAffected() == 0 {
+	if cmd.RowsAffected() == 0 {
 		return database.ErrNotFound
 	}
-
 	return nil
 }

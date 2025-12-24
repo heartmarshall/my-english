@@ -78,7 +78,7 @@ func (r *mutationResolver) ReviewMeaning(ctx context.Context, meaningID string, 
 	}
 
 	// Examples и Tags загрузятся через field resolvers
-	return ToGraphQLMeaningBasic(meaning), nil
+	return ToGraphQLMeaningBasic(&meaning), nil
 }
 
 // DeleteWord is the resolver for the deleteWord field.
@@ -105,8 +105,8 @@ func (r *queryResolver) Words(ctx context.Context, filter *WordFilter, limit *in
 
 	// Используем ToGraphQLWordBasic — meanings загрузятся через field resolver
 	result := make([]*Word, 0, len(words))
-	for _, w := range words {
-		result = append(result, ToGraphQLWordBasic(w))
+	for i := range words {
+		result = append(result, ToGraphQLWordBasic(&words[i]))
 	}
 
 	return result, nil
@@ -138,8 +138,8 @@ func (r *queryResolver) StudyQueue(ctx context.Context, limit *int) ([]*Meaning,
 
 	// Examples и Tags загрузятся через field resolvers с DataLoader
 	result := make([]*Meaning, 0, len(meanings))
-	for _, m := range meanings {
-		result = append(result, ToGraphQLMeaningBasic(m))
+	for i := range meanings {
+		result = append(result, ToGraphQLMeaningBasic(&meanings[i]))
 	}
 
 	return result, nil

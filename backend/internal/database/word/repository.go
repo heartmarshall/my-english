@@ -3,21 +3,17 @@ package word
 
 import (
 	"github.com/heartmarshall/my-english/internal/database"
-)
-
-// Константы таблицы.
-const (
-	tableName = "words"
+	"github.com/heartmarshall/my-english/internal/database/schema"
 )
 
 // columns — список колонок таблицы words.
 var columns = []string{
-	"id",
-	"text",
-	"transcription",
-	"audio_url",
-	"frequency_rank",
-	"created_at",
+	schema.WordColumns.ID.String(),
+	schema.WordColumns.Text.String(),
+	schema.WordColumns.Transcription.String(),
+	schema.WordColumns.AudioURL.String(),
+	schema.WordColumns.FrequencyRank.String(),
+	schema.WordColumns.CreatedAt.String(),
 }
 
 // Repo — реализация репозитория для PostgreSQL.

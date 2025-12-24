@@ -9,8 +9,8 @@ import (
 
 // MeaningRepository определяет интерфейс для работы со значениями.
 type MeaningRepository interface {
-	GetByID(ctx context.Context, id int64) (*model.Meaning, error)
-	GetStudyQueue(ctx context.Context, limit int) ([]*model.Meaning, error)
+	GetByID(ctx context.Context, id int64) (model.Meaning, error)
+	GetStudyQueue(ctx context.Context, limit int) ([]model.Meaning, error)
 	GetStats(ctx context.Context) (*model.Stats, error)
 }
 

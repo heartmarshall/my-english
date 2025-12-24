@@ -23,27 +23,27 @@ const (
 // Использует упрощённый алгоритм SM-2:
 // - grade < 3: сбрасываем интервал, уменьшаем ease factor
 // - grade >= 3: увеличиваем интервал, корректируем ease factor
-func (s *Service) ReviewMeaning(ctx context.Context, meaningID int64, grade int) (*model.Meaning, error) {
+func (s *Service) ReviewMeaning(ctx context.Context, meaningID int64, grade int) (model.Meaning, error) {
 	// Валидация
 	if grade < 1 || grade > 5 {
-		return nil, service.ErrInvalidGrade
+		return model.Meaning{}, service.ErrInvalidGrade
 	}
 
 	// Получаем текущее состояние
 	meaning, err := s.meanings.GetByID(ctx, meaningID)
 	if err != nil {
 		if errors.Is(err, database.ErrNotFound) {
-			return nil, service.ErrMeaningNotFound
+			return model.Meaning{}, service.ErrMeaningNotFound
 		}
-		return nil, err
+		return model.Meaning{}, err
 	}
 
 	// Рассчитываем новые SRS параметры
-	srsUpdate := s.calculateSRS(meaning, grade)
+	srsUpdate := s.calculateSRS(&meaning, grade)
 
 	// Обновляем в БД
 	if err := s.srs.UpdateSRS(ctx, meaningID, srsUpdate); err != nil {
-		return nil, err
+		return model.Meaning{}, err
 	}
 
 	// Обновляем модель для возврата

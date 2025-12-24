@@ -2,70 +2,58 @@ package word
 
 import (
 	"context"
-	"strings"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/heartmarshall/my-english/internal/database"
+	"github.com/heartmarshall/my-english/internal/database/schema"
 	"github.com/heartmarshall/my-english/internal/model"
 )
 
-// GetByID возвращает слово по ID.
-func (r *Repo) GetByID(ctx context.Context, id int64) (*model.Word, error) {
+func (r *Repo) GetByID(ctx context.Context, id int64) (model.Word, error) {
 	query, args, err := database.Builder.
 		Select(columns...).
-		From(tableName).
-		Where(squirrel.Eq{"id": id}).
+		From(schema.Words.String()).
+		Where(schema.WordColumns.ID.Eq(id)).
 		ToSql()
 	if err != nil {
-		return nil, err
+		return model.Word{}, err
 	}
 
-	word, err := r.scanRow(r.q.QueryRow(ctx, query, args...))
+	word, err := database.GetOne[model.Word](ctx, r.q, query, args...)
 	if err != nil {
-		if database.IsNotFoundError(err) {
-			return nil, database.ErrNotFound
-		}
-		return nil, err
+		return model.Word{}, err
 	}
-
-	return word, nil
+	return *word, nil
 }
 
-// GetByText возвращает слово по тексту (case-insensitive).
-func (r *Repo) GetByText(ctx context.Context, text string) (*model.Word, error) {
+func (r *Repo) GetByText(ctx context.Context, text string) (model.Word, error) {
 	query, args, err := database.Builder.
 		Select(columns...).
-		From(tableName).
-		Where(squirrel.Eq{"text": strings.ToLower(strings.TrimSpace(text))}).
+		From(schema.Words.String()).
+		Where(schema.WordColumns.Text.Eq(text)).
 		ToSql()
 	if err != nil {
-		return nil, err
+		return model.Word{}, err
 	}
 
-	word, err := r.scanRow(r.q.QueryRow(ctx, query, args...))
+	word, err := database.GetOne[model.Word](ctx, r.q, query, args...)
 	if err != nil {
-		if database.IsNotFoundError(err) {
-			return nil, database.ErrNotFound
-		}
-		return nil, err
+		return model.Word{}, err
 	}
-
-	return word, nil
+	return *word, nil
 }
 
-// List возвращает список слов с фильтрацией и пагинацией.
-// limit ограничивается до [1, MaxLimit], offset не может быть отрицательным.
-func (r *Repo) List(ctx context.Context, filter *model.WordFilter, limit, offset int) ([]*model.Word, error) {
+func (r *Repo) List(ctx context.Context, filter *model.WordFilter, limit, offset int) ([]model.Word, error) {
 	limit, offset = database.NormalizePagination(limit, offset)
 
 	qb := database.Builder.
 		Select(columns...).
-		From(tableName)
+		From(schema.Words.String())
 
 	qb = applyFilter(qb, filter)
 
 	qb = qb.
-		OrderBy("created_at DESC").
+		OrderBy(schema.WordColumns.CreatedAt.OrderByDESC()).
 		Limit(uint64(limit)).
 		Offset(uint64(offset))
 
@@ -74,21 +62,11 @@ func (r *Repo) List(ctx context.Context, filter *model.WordFilter, limit, offset
 		return nil, err
 	}
 
-	rows, err := r.q.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	return r.scanRows(rows)
+	return database.Select[model.Word](ctx, r.q, query, args...)
 }
 
-// Count возвращает количество слов, соответствующих фильтру.
 func (r *Repo) Count(ctx context.Context, filter *model.WordFilter) (int, error) {
-	qb := database.Builder.
-		Select("COUNT(*)").
-		From(tableName)
-
+	qb := database.Builder.Select("COUNT(*)").From(schema.Words.String())
 	qb = applyFilter(qb, filter)
 
 	query, args, err := qb.ToSql()
@@ -96,34 +74,28 @@ func (r *Repo) Count(ctx context.Context, filter *model.WordFilter) (int, error)
 		return 0, err
 	}
 
-	var count int
-	err = r.q.QueryRow(ctx, query, args...).Scan(&count)
-	if err != nil {
-		return 0, err
-	}
-
-	return count, nil
+	return database.GetScalar[int](ctx, r.q, query, args...)
 }
 
 func (r *Repo) Exists(ctx context.Context, id int64) (bool, error) {
 	query, args, err := database.Builder.
 		Select("1").
-		From(tableName).
-		Where(squirrel.Eq{"id": id}).
+		From(schema.Words.String()).
+		Where(schema.WordColumns.ID.Eq(id)).
 		Limit(1).
 		ToSql()
 	if err != nil {
 		return false, err
 	}
+	return database.CheckExists(ctx, r.q, query, args...)
+}
 
-	var exists int
-	err = r.q.QueryRow(ctx, query, args...).Scan(&exists)
-	if err != nil {
-		if database.IsNotFoundError(err) {
-			return false, nil
-		}
-		return false, err
+func applyFilter(qb squirrel.SelectBuilder, filter *model.WordFilter) squirrel.SelectBuilder {
+	if filter == nil {
+		return qb
 	}
-
-	return true, nil
+	if filter.Search != nil && *filter.Search != "" {
+		return qb.Where(schema.WordColumns.Text.ILike("%" + *filter.Search + "%"))
+	}
+	return qb
 }

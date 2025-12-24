@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/heartmarshall/my-english/internal/database"
+	"github.com/heartmarshall/my-english/internal/database/schema"
 	"github.com/heartmarshall/my-english/internal/model"
 )
 
@@ -21,10 +21,10 @@ func (r *Repo) Create(ctx context.Context, tag *model.Tag) error {
 	}
 
 	query, args, err := database.Builder.
-		Insert(tableName).
-		Columns("name").
+		Insert(schema.Tags.String()).
+		Columns(schema.TagColumns.Name.String()).
 		Values(name).
-		Suffix("RETURNING id").
+		Suffix(schema.TagColumns.ID.Returning()).
 		ToSql()
 	if err != nil {
 		return err
@@ -40,10 +40,10 @@ func (r *Repo) Create(ctx context.Context, tag *model.Tag) error {
 }
 
 // GetOrCreate возвращает существующий tag или создаёт новый.
-func (r *Repo) GetOrCreate(ctx context.Context, name string) (*model.Tag, error) {
+func (r *Repo) GetOrCreate(ctx context.Context, name string) (model.Tag, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return nil, database.ErrInvalidInput
+		return model.Tag{}, database.ErrInvalidInput
 	}
 
 	// Пробуем найти существующий
@@ -53,27 +53,27 @@ func (r *Repo) GetOrCreate(ctx context.Context, name string) (*model.Tag, error)
 	}
 
 	if err != database.ErrNotFound {
-		return nil, err
+		return model.Tag{}, err
 	}
 
 	// Создаём новый
-	tag = &model.Tag{Name: name}
-	if err := r.Create(ctx, tag); err != nil {
+	tagPtr := &model.Tag{Name: name}
+	if err := r.Create(ctx, tagPtr); err != nil {
 		// Возможен race condition — проверяем ещё раз
 		if database.IsDuplicateError(err) {
 			return r.GetByName(ctx, name)
 		}
-		return nil, err
+		return model.Tag{}, err
 	}
 
-	return tag, nil
+	return *tagPtr, nil
 }
 
 // Delete удаляет tag по ID.
 func (r *Repo) Delete(ctx context.Context, id int64) error {
 	query, args, err := database.Builder.
-		Delete(tableName).
-		Where(squirrel.Eq{"id": id}).
+		Delete(schema.Tags.String()).
+		Where(schema.TagColumns.ID.Eq(id)).
 		ToSql()
 	if err != nil {
 		return err

@@ -10,22 +10,22 @@ import (
 
 // MeaningRepository определяет интерфейс для загрузки meanings.
 type MeaningRepository interface {
-	GetByWordIDs(ctx context.Context, wordIDs []int64) ([]*model.Meaning, error)
+	GetByWordIDs(ctx context.Context, wordIDs []int64) ([]model.Meaning, error)
 }
 
 // ExampleRepository определяет интерфейс для загрузки examples.
 type ExampleRepository interface {
-	GetByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]*model.Example, error)
+	GetByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.Example, error)
 }
 
 // TagRepository определяет интерфейс для загрузки tags.
 type TagRepository interface {
-	GetByIDs(ctx context.Context, ids []int64) ([]*model.Tag, error)
+	GetByIDs(ctx context.Context, ids []int64) ([]model.Tag, error)
 }
 
 // MeaningTagRepository определяет интерфейс для связей meaning-tag.
 type MeaningTagRepository interface {
-	GetByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]*model.MeaningTag, error)
+	GetByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.MeaningTag, error)
 }
 
 // Deps — зависимости сервиса.
@@ -55,22 +55,22 @@ func New(deps Deps) *Service {
 }
 
 // GetMeaningsByWordIDs загружает meanings для нескольких слов.
-func (s *Service) GetMeaningsByWordIDs(ctx context.Context, wordIDs []int64) ([]*model.Meaning, error) {
+func (s *Service) GetMeaningsByWordIDs(ctx context.Context, wordIDs []int64) ([]model.Meaning, error) {
 	return s.meanings.GetByWordIDs(ctx, wordIDs)
 }
 
 // GetExamplesByMeaningIDs загружает examples для нескольких meanings.
-func (s *Service) GetExamplesByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]*model.Example, error) {
+func (s *Service) GetExamplesByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.Example, error) {
 	return s.examples.GetByMeaningIDs(ctx, meaningIDs)
 }
 
 // GetTagsByMeaningIDs загружает теги для нескольких meanings.
 // Возвращает связи MeaningTag для группировки.
-func (s *Service) GetTagsByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]*model.MeaningTag, error) {
+func (s *Service) GetTagsByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.MeaningTag, error) {
 	return s.meaningTags.GetByMeaningIDs(ctx, meaningIDs)
 }
 
 // GetTagsByIDs загружает теги по ID.
-func (s *Service) GetTagsByIDs(ctx context.Context, ids []int64) ([]*model.Tag, error) {
+func (s *Service) GetTagsByIDs(ctx context.Context, ids []int64) ([]model.Tag, error) {
 	return s.tags.GetByIDs(ctx, ids)
 }

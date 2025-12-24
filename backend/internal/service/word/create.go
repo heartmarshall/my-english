@@ -54,8 +54,8 @@ func (s *Service) Create(ctx context.Context, input CreateWordInput) (*WordWithR
 
 		// Создаём meanings с примерами и тегами
 		result = &WordWithRelations{
-			Word:     word,
-			Meanings: make([]*MeaningWithRelations, 0, len(input.Meanings)),
+			Word:     *word,
+			Meanings: make([]MeaningWithRelations, 0, len(input.Meanings)),
 		}
 
 		for _, meaningInput := range input.Meanings {
@@ -63,7 +63,7 @@ func (s *Service) Create(ctx context.Context, input CreateWordInput) (*WordWithR
 			if err != nil {
 				return err
 			}
-			result.Meanings = append(result.Meanings, mr)
+			result.Meanings = append(result.Meanings, *mr)
 		}
 
 		return nil
@@ -96,10 +96,10 @@ func (s *Service) createMeaningTx(ctx context.Context, r *repos, wordID int64, i
 		return nil, err
 	}
 
-	result := &MeaningWithRelations{
-		Meaning:  meaning,
-		Examples: make([]*model.Example, 0),
-		Tags:     make([]*model.Tag, 0),
+	result := MeaningWithRelations{
+		Meaning:  *meaning,
+		Examples: make([]model.Example, 0),
+		Tags:     make([]model.Tag, 0),
 	}
 
 	// Создаём примеры
@@ -121,14 +121,17 @@ func (s *Service) createMeaningTx(ctx context.Context, r *repos, wordID int64, i
 			if err := r.examples.CreateBatch(ctx, examples); err != nil {
 				return nil, err
 			}
-			result.Examples = examples
+			result.Examples = make([]model.Example, len(examples))
+			for i, ex := range examples {
+				result.Examples[i] = *ex
+			}
 		}
 	}
 
 	// Создаём/получаем теги и привязываем
 	if len(input.Tags) > 0 {
 		tagIDs := make([]int64, 0, len(input.Tags))
-		tags := make([]*model.Tag, 0, len(input.Tags))
+		tags := make([]model.Tag, 0, len(input.Tags))
 
 		for _, tagName := range input.Tags {
 			tag, err := r.tags.GetOrCreate(ctx, tagName)
@@ -145,5 +148,5 @@ func (s *Service) createMeaningTx(ctx context.Context, r *repos, wordID int64, i
 		result.Tags = tags
 	}
 
-	return result, nil
+	return &result, nil
 }

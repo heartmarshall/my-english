@@ -21,7 +21,7 @@ func TestService_ReviewMeaning(t *testing.T) {
 	t.Run("first review correct", func(t *testing.T) {
 		now := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 
-		existingMeaning := &model.Meaning{
+		existingMeaning := model.Meaning{
 			ID:             1,
 			WordID:         1,
 			TranslationRu:  "привет",
@@ -34,11 +34,11 @@ func TestService_ReviewMeaning(t *testing.T) {
 		var capturedUpdate *study.SRSUpdate
 
 		meaningRepo := &mockMeaningRepository{
-			GetByIDFunc: func(ctx context.Context, id int64) (*model.Meaning, error) {
+			GetByIDFunc: func(ctx context.Context, id int64) (model.Meaning, error) {
 				if id == 1 {
 					return existingMeaning, nil
 				}
-				return nil, database.ErrNotFound
+				return model.Meaning{}, database.ErrNotFound
 			},
 		}
 
@@ -82,7 +82,7 @@ func TestService_ReviewMeaning(t *testing.T) {
 	t.Run("incorrect answer resets interval", func(t *testing.T) {
 		now := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 
-		existingMeaning := &model.Meaning{
+		existingMeaning := model.Meaning{
 			ID:             1,
 			WordID:         1,
 			TranslationRu:  "привет",
@@ -95,7 +95,7 @@ func TestService_ReviewMeaning(t *testing.T) {
 		var capturedUpdate *study.SRSUpdate
 
 		meaningRepo := &mockMeaningRepository{
-			GetByIDFunc: func(ctx context.Context, id int64) (*model.Meaning, error) {
+			GetByIDFunc: func(ctx context.Context, id int64) (model.Meaning, error) {
 				return existingMeaning, nil
 			},
 		}
@@ -136,8 +136,8 @@ func TestService_ReviewMeaning(t *testing.T) {
 
 	t.Run("meaning not found", func(t *testing.T) {
 		meaningRepo := &mockMeaningRepository{
-			GetByIDFunc: func(ctx context.Context, id int64) (*model.Meaning, error) {
-				return nil, database.ErrNotFound
+			GetByIDFunc: func(ctx context.Context, id int64) (model.Meaning, error) {
+				return model.Meaning{}, database.ErrNotFound
 			},
 		}
 
@@ -186,7 +186,7 @@ func TestService_ReviewMeaning(t *testing.T) {
 		now := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 
 		// Meaning уже в статусе Review с хорошим интервалом
-		existingMeaning := &model.Meaning{
+		existingMeaning := model.Meaning{
 			ID:             1,
 			WordID:         1,
 			TranslationRu:  "привет",
@@ -197,7 +197,7 @@ func TestService_ReviewMeaning(t *testing.T) {
 		}
 
 		meaningRepo := &mockMeaningRepository{
-			GetByIDFunc: func(ctx context.Context, id int64) (*model.Meaning, error) {
+			GetByIDFunc: func(ctx context.Context, id int64) (model.Meaning, error) {
 				return existingMeaning, nil
 			},
 		}
@@ -229,7 +229,7 @@ func TestService_ReviewMeaning(t *testing.T) {
 	t.Run("correct answer increases interval", func(t *testing.T) {
 		now := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 
-		existingMeaning := &model.Meaning{
+		existingMeaning := model.Meaning{
 			ID:             1,
 			WordID:         1,
 			TranslationRu:  "привет",
@@ -240,7 +240,7 @@ func TestService_ReviewMeaning(t *testing.T) {
 		}
 
 		meaningRepo := &mockMeaningRepository{
-			GetByIDFunc: func(ctx context.Context, id int64) (*model.Meaning, error) {
+			GetByIDFunc: func(ctx context.Context, id int64) (model.Meaning, error) {
 				return existingMeaning, nil
 			},
 		}

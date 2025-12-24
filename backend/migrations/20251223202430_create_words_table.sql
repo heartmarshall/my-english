@@ -17,6 +17,5 @@ CREATE INDEX idx_words_text ON words(text);
 CREATE INDEX idx_words_created_at ON words(created_at);
 
 -- +goose Down
--- Удаление таблицы words
 DROP TABLE IF EXISTS words;
 

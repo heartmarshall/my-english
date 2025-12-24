@@ -3,8 +3,8 @@ package tag
 import (
 	"context"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/heartmarshall/my-english/internal/database"
+	"github.com/heartmarshall/my-english/internal/database/schema"
 	"github.com/heartmarshall/my-english/internal/model"
 )
 
@@ -12,110 +12,80 @@ import (
 func (r *Repo) GetByID(ctx context.Context, id int64) (*model.Tag, error) {
 	query, args, err := database.Builder.
 		Select(columns...).
-		From(tableName).
-		Where(squirrel.Eq{"id": id}).
+		From(schema.Tags.String()).
+		Where(schema.TagColumns.ID.Eq(id)).
 		ToSql()
 	if err != nil {
 		return nil, err
 	}
 
-	tag, err := r.scanRow(r.q.QueryRow(ctx, query, args...))
-	if err != nil {
-		if database.IsNotFoundError(err) {
-			return nil, database.ErrNotFound
-		}
-		return nil, err
-	}
-
-	return tag, nil
+	return database.GetOne[model.Tag](ctx, r.q, query, args...)
 }
 
 // GetByName возвращает tag по имени.
-func (r *Repo) GetByName(ctx context.Context, name string) (*model.Tag, error) {
+func (r *Repo) GetByName(ctx context.Context, name string) (model.Tag, error) {
 	query, args, err := database.Builder.
 		Select(columns...).
-		From(tableName).
-		Where(squirrel.Eq{"name": name}).
+		From(schema.Tags.String()).
+		Where(schema.TagColumns.Name.Eq(name)).
 		ToSql()
 	if err != nil {
-		return nil, err
+		return model.Tag{}, err
 	}
 
-	tag, err := r.scanRow(r.q.QueryRow(ctx, query, args...))
+	tag, err := database.GetOne[model.Tag](ctx, r.q, query, args...)
 	if err != nil {
-		if database.IsNotFoundError(err) {
-			return nil, database.ErrNotFound
-		}
-		return nil, err
+		return model.Tag{}, err
 	}
-
-	return tag, nil
+	return *tag, nil
 }
 
 // GetByNames возвращает tags по списку имён.
-func (r *Repo) GetByNames(ctx context.Context, names []string) ([]*model.Tag, error) {
+func (r *Repo) GetByNames(ctx context.Context, names []string) ([]model.Tag, error) {
 	if len(names) == 0 {
-		return make([]*model.Tag, 0), nil
+		return make([]model.Tag, 0), nil
 	}
 
 	query, args, err := database.Builder.
 		Select(columns...).
-		From(tableName).
-		Where(squirrel.Eq{"name": names}).
+		From(schema.Tags.String()).
+		Where(schema.TagColumns.Name.In(names)).
 		ToSql()
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err := r.q.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	return r.scanRows(rows)
+	return database.Select[model.Tag](ctx, r.q, query, args...)
 }
 
 // GetByIDs возвращает tags по списку ID.
-func (r *Repo) GetByIDs(ctx context.Context, ids []int64) ([]*model.Tag, error) {
+func (r *Repo) GetByIDs(ctx context.Context, ids []int64) ([]model.Tag, error) {
 	if len(ids) == 0 {
-		return make([]*model.Tag, 0), nil
+		return make([]model.Tag, 0), nil
 	}
 
 	query, args, err := database.Builder.
 		Select(columns...).
-		From(tableName).
-		Where(squirrel.Eq{"id": ids}).
+		From(schema.Tags.String()).
+		Where(schema.TagColumns.ID.In(ids)).
 		ToSql()
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err := r.q.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	return r.scanRows(rows)
+	return database.Select[model.Tag](ctx, r.q, query, args...)
 }
 
 // List возвращает все tags.
-func (r *Repo) List(ctx context.Context) ([]*model.Tag, error) {
+func (r *Repo) List(ctx context.Context) ([]model.Tag, error) {
 	query, args, err := database.Builder.
 		Select(columns...).
-		From(tableName).
-		OrderBy("name ASC").
+		From(schema.Tags.String()).
+		OrderBy(schema.TagColumns.Name.OrderByASC()).
 		ToSql()
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err := r.q.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	return r.scanRows(rows)
+	return database.Select[model.Tag](ctx, r.q, query, args...)
 }

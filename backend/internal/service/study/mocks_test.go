@@ -21,23 +21,23 @@ func (c *mockClock) Now() time.Time {
 // --- Mock Repositories ---
 
 type mockMeaningRepository struct {
-	GetByIDFunc       func(ctx context.Context, id int64) (*model.Meaning, error)
-	GetStudyQueueFunc func(ctx context.Context, limit int) ([]*model.Meaning, error)
+	GetByIDFunc       func(ctx context.Context, id int64) (model.Meaning, error)
+	GetStudyQueueFunc func(ctx context.Context, limit int) ([]model.Meaning, error)
 	GetStatsFunc      func(ctx context.Context) (*model.Stats, error)
 }
 
-func (m *mockMeaningRepository) GetByID(ctx context.Context, id int64) (*model.Meaning, error) {
+func (m *mockMeaningRepository) GetByID(ctx context.Context, id int64) (model.Meaning, error) {
 	if m.GetByIDFunc != nil {
 		return m.GetByIDFunc(ctx, id)
 	}
-	return nil, nil
+	return model.Meaning{}, nil
 }
 
-func (m *mockMeaningRepository) GetStudyQueue(ctx context.Context, limit int) ([]*model.Meaning, error) {
+func (m *mockMeaningRepository) GetStudyQueue(ctx context.Context, limit int) ([]model.Meaning, error) {
 	if m.GetStudyQueueFunc != nil {
 		return m.GetStudyQueueFunc(ctx, limit)
 	}
-	return []*model.Meaning{}, nil
+	return []model.Meaning{}, nil
 }
 
 func (m *mockMeaningRepository) GetStats(ctx context.Context) (*model.Stats, error) {

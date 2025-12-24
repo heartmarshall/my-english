@@ -17,41 +17,41 @@ func TestService_GetByID(t *testing.T) {
 
 	t.Run("found with relations", func(t *testing.T) {
 		now := time.Now()
-		testWord := &model.Word{ID: 1, Text: "hello", CreatedAt: now}
-		testMeaning := &model.Meaning{ID: 1, WordID: 1, TranslationRu: "привет"}
-		testExample := &model.Example{ID: 1, MeaningID: 1, SentenceEn: "Hello!"}
-		testTag := &model.Tag{ID: 1, Name: "greetings"}
+		testWord := model.Word{ID: 1, Text: "hello", CreatedAt: now}
+		testMeaning := model.Meaning{ID: 1, WordID: 1, TranslationRu: "привет"}
+		testExample := model.Example{ID: 1, MeaningID: 1, SentenceEn: "Hello!"}
+		testTag := model.Tag{ID: 1, Name: "greetings"}
 
 		wordRepo := &mockWordRepository{
-			GetByIDFunc: func(ctx context.Context, id int64) (*model.Word, error) {
+			GetByIDFunc: func(ctx context.Context, id int64) (model.Word, error) {
 				if id == 1 {
 					return testWord, nil
 				}
-				return nil, database.ErrNotFound
+				return model.Word{}, database.ErrNotFound
 			},
 		}
 
 		meaningRepo := &mockMeaningRepository{
-			GetByWordIDFunc: func(ctx context.Context, wordID int64) ([]*model.Meaning, error) {
-				return []*model.Meaning{testMeaning}, nil
+			GetByWordIDFunc: func(ctx context.Context, wordID int64) ([]model.Meaning, error) {
+				return []model.Meaning{testMeaning}, nil
 			},
 		}
 
 		exampleRepo := &mockExampleRepository{
-			GetByMeaningIDsFunc: func(ctx context.Context, meaningIDs []int64) ([]*model.Example, error) {
-				return []*model.Example{testExample}, nil
+			GetByMeaningIDsFunc: func(ctx context.Context, meaningIDs []int64) ([]model.Example, error) {
+				return []model.Example{testExample}, nil
 			},
 		}
 
 		tagRepo := &mockTagRepository{
-			GetByIDsFunc: func(ctx context.Context, ids []int64) ([]*model.Tag, error) {
-				return []*model.Tag{testTag}, nil
+			GetByIDsFunc: func(ctx context.Context, ids []int64) ([]model.Tag, error) {
+				return []model.Tag{testTag}, nil
 			},
 		}
 
 		meaningTagRepo := &mockMeaningTagRepository{
-			GetByMeaningIDsFunc: func(ctx context.Context, meaningIDs []int64) ([]*model.MeaningTag, error) {
-				return []*model.MeaningTag{{MeaningID: 1, TagID: 1}}, nil
+			GetByMeaningIDsFunc: func(ctx context.Context, meaningIDs []int64) ([]model.MeaningTag, error) {
+				return []model.MeaningTag{{MeaningID: 1, TagID: 1}}, nil
 			},
 		}
 
@@ -84,8 +84,8 @@ func TestService_GetByID(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		wordRepo := &mockWordRepository{
-			GetByIDFunc: func(ctx context.Context, id int64) (*model.Word, error) {
-				return nil, database.ErrNotFound
+			GetByIDFunc: func(ctx context.Context, id int64) (model.Word, error) {
+				return model.Word{}, database.ErrNotFound
 			},
 		}
 
@@ -110,8 +110,8 @@ func TestService_List(t *testing.T) {
 
 	t.Run("returns words", func(t *testing.T) {
 		wordRepo := &mockWordRepository{
-			ListFunc: func(ctx context.Context, filter *model.WordFilter, limit, offset int) ([]*model.Word, error) {
-				return []*model.Word{
+			ListFunc: func(ctx context.Context, filter *model.WordFilter, limit, offset int) ([]model.Word, error) {
+				return []model.Word{
 					{ID: 1, Text: "hello"},
 					{ID: 2, Text: "world"},
 				}, nil
@@ -140,9 +140,9 @@ func TestService_List(t *testing.T) {
 		var capturedFilter *model.WordFilter
 
 		wordRepo := &mockWordRepository{
-			ListFunc: func(ctx context.Context, filter *model.WordFilter, limit, offset int) ([]*model.Word, error) {
+			ListFunc: func(ctx context.Context, filter *model.WordFilter, limit, offset int) ([]model.Word, error) {
 				capturedFilter = filter
-				return []*model.Word{}, nil
+				return []model.Word{}, nil
 			},
 		}
 

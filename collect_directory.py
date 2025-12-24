@@ -29,6 +29,7 @@ EXCLUDED_FILENAMES: Set[str] = {
     "composer.lock",
     "go.sum",
     "collect_directory.py",
+    "generated.go",
 }
 
 EXCLUDED_EXTENSIONS: Set[str] = {
