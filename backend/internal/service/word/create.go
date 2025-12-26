@@ -13,13 +13,9 @@ import (
 // Create создаёт новое слово со всеми связанными данными.
 // Все операции выполняются в транзакции.
 func (s *Service) Create(ctx context.Context, input CreateWordInput) (*WordWithRelations, error) {
-	// Валидация
+	// Валидация - только text обязателен
 	text := strings.TrimSpace(strings.ToLower(input.Text))
 	if text == "" {
-		return nil, service.ErrInvalidInput
-	}
-
-	if len(input.Meanings) == 0 {
 		return nil, service.ErrInvalidInput
 	}
 

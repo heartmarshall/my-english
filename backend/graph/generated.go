@@ -1223,9 +1223,9 @@ func (ec *executionContext) _Meaning_examples(ctx context.Context, field graphql
 			return ec.resolvers.Meaning().Examples(ctx, obj)
 		},
 		nil,
-		ec.marshalNExample2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐExampleᚄ,
+		ec.marshalOExample2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐExampleᚄ,
 		true,
-		true,
+		false,
 	)
 }
 
@@ -1262,9 +1262,9 @@ func (ec *executionContext) _Meaning_tags(ctx context.Context, field graphql.Col
 			return ec.resolvers.Meaning().Tags(ctx, obj)
 		},
 		nil,
-		ec.marshalNTag2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTagᚄ,
+		ec.marshalOTag2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTagᚄ,
 		true,
-		true,
+		false,
 	)
 }
 
@@ -2042,9 +2042,9 @@ func (ec *executionContext) _Word_meanings(ctx context.Context, field graphql.Co
 			return ec.resolvers.Word().Meanings(ctx, obj)
 		},
 		nil,
-		ec.marshalNMeaning2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐMeaningᚄ,
+		ec.marshalOMeaning2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐMeaningᚄ,
 		true,
-		true,
+		false,
 	)
 }
 
@@ -3570,7 +3570,7 @@ func (ec *executionContext) unmarshalInputAddWordInput(ctx context.Context, obj 
 			it.AudioURL = data
 		case "meanings":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("meanings"))
-			data, err := ec.unmarshalNMeaningInput2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐMeaningInputᚄ(ctx, v)
+			data, err := ec.unmarshalOMeaningInput2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐMeaningInputᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -3887,16 +3887,13 @@ func (ec *executionContext) _Meaning(ctx context.Context, sel ast.SelectionSet, 
 		case "examples":
 			field := field
 
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
 				defer func() {
 					if r := recover(); r != nil {
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
 				res = ec._Meaning_examples(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
 				return res
 			}
 
@@ -3923,16 +3920,13 @@ func (ec *executionContext) _Meaning(ctx context.Context, sel ast.SelectionSet, 
 		case "tags":
 			field := field
 
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
 				defer func() {
 					if r := recover(); r != nil {
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
 				res = ec._Meaning_tags(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
 				return res
 			}
 
@@ -4258,16 +4252,13 @@ func (ec *executionContext) _Word(ctx context.Context, sel ast.SelectionSet, obj
 		case "meanings":
 			field := field
 
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
 				defer func() {
 					if r := recover(); r != nil {
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
 				res = ec._Word_meanings(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
 				return res
 			}
 
@@ -4684,50 +4675,6 @@ func (ec *executionContext) marshalNDashboardStats2ᚖgithubᚗcomᚋheartmarsha
 	return ec._DashboardStats(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNExample2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐExampleᚄ(ctx context.Context, sel ast.SelectionSet, v []*Example) graphql.Marshaler {
-	ret := make(graphql.Array, len(v))
-	var wg sync.WaitGroup
-	isLen1 := len(v) == 1
-	if !isLen1 {
-		wg.Add(len(v))
-	}
-	for i := range v {
-		i := i
-		fc := &graphql.FieldContext{
-			Index:  &i,
-			Result: &v[i],
-		}
-		ctx := graphql.WithFieldContext(ctx, fc)
-		f := func(i int) {
-			defer func() {
-				if r := recover(); r != nil {
-					ec.Error(ctx, ec.Recover(ctx, r))
-					ret = nil
-				}
-			}()
-			if !isLen1 {
-				defer wg.Done()
-			}
-			ret[i] = ec.marshalNExample2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐExample(ctx, sel, v[i])
-		}
-		if isLen1 {
-			f(i)
-		} else {
-			go f(i)
-		}
-
-	}
-	wg.Wait()
-
-	for _, e := range ret {
-		if e == graphql.Null {
-			return graphql.Null
-		}
-	}
-
-	return ret
-}
-
 func (ec *executionContext) marshalNExample2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐExample(ctx context.Context, sel ast.SelectionSet, v *Example) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -4843,21 +4790,6 @@ func (ec *executionContext) marshalNMeaning2ᚖgithubᚗcomᚋheartmarshallᚋmy
 	return ec._Meaning(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNMeaningInput2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐMeaningInputᚄ(ctx context.Context, v any) ([]*MeaningInput, error) {
-	var vSlice []any
-	vSlice = graphql.CoerceList(v)
-	var err error
-	res := make([]*MeaningInput, len(vSlice))
-	for i := range vSlice {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
-		res[i], err = ec.unmarshalNMeaningInput2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐMeaningInput(ctx, vSlice[i])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return res, nil
-}
-
 func (ec *executionContext) unmarshalNMeaningInput2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐMeaningInput(ctx context.Context, v any) (*MeaningInput, error) {
 	res, err := ec.unmarshalInputMeaningInput(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
@@ -4887,50 +4819,6 @@ func (ec *executionContext) marshalNString2string(ctx context.Context, sel ast.S
 		}
 	}
 	return res
-}
-
-func (ec *executionContext) marshalNTag2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTagᚄ(ctx context.Context, sel ast.SelectionSet, v []*Tag) graphql.Marshaler {
-	ret := make(graphql.Array, len(v))
-	var wg sync.WaitGroup
-	isLen1 := len(v) == 1
-	if !isLen1 {
-		wg.Add(len(v))
-	}
-	for i := range v {
-		i := i
-		fc := &graphql.FieldContext{
-			Index:  &i,
-			Result: &v[i],
-		}
-		ctx := graphql.WithFieldContext(ctx, fc)
-		f := func(i int) {
-			defer func() {
-				if r := recover(); r != nil {
-					ec.Error(ctx, ec.Recover(ctx, r))
-					ret = nil
-				}
-			}()
-			if !isLen1 {
-				defer wg.Done()
-			}
-			ret[i] = ec.marshalNTag2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTag(ctx, sel, v[i])
-		}
-		if isLen1 {
-			f(i)
-		} else {
-			go f(i)
-		}
-
-	}
-	wg.Wait()
-
-	for _, e := range ret {
-		if e == graphql.Null {
-			return graphql.Null
-		}
-	}
-
-	return ret
 }
 
 func (ec *executionContext) marshalNTag2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTag(ctx context.Context, sel ast.SelectionSet, v *Tag) graphql.Marshaler {
@@ -5284,6 +5172,53 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	return res
 }
 
+func (ec *executionContext) marshalOExample2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐExampleᚄ(ctx context.Context, sel ast.SelectionSet, v []*Example) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNExample2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐExample(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) unmarshalOExampleInput2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐExampleInputᚄ(ctx context.Context, v any) ([]*ExampleInput, error) {
 	if v == nil {
 		return nil, nil
@@ -5352,6 +5287,71 @@ func (ec *executionContext) marshalOLearningStatus2ᚖgithubᚗcomᚋheartmarsha
 	return v
 }
 
+func (ec *executionContext) marshalOMeaning2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐMeaningᚄ(ctx context.Context, sel ast.SelectionSet, v []*Meaning) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNMeaning2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐMeaning(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) unmarshalOMeaningInput2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐMeaningInputᚄ(ctx context.Context, v any) ([]*MeaningInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]*MeaningInput, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNMeaningInput2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐMeaningInput(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
 func (ec *executionContext) unmarshalOString2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {
 	if v == nil {
 		return nil, nil
@@ -5404,6 +5404,53 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	_ = ctx
 	res := graphql.MarshalString(*v)
 	return res
+}
+
+func (ec *executionContext) marshalOTag2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTagᚄ(ctx context.Context, sel ast.SelectionSet, v []*Tag) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNTag2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTag(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) unmarshalOTime2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTime(ctx context.Context, v any) (*Time, error) {

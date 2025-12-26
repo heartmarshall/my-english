@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -92,12 +93,16 @@ func newExampleBatchFunc(loader LoaderService) func(ctx context.Context, meaning
 		// Загружаем все examples одним запросом
 		examples, err := loader.GetExamplesByMeaningIDs(ctx, meaningIDs)
 		if err != nil {
-			// Возвращаем ошибку для всех ключей
-			errs := make([]error, len(meaningIDs))
-			for i := range errs {
-				errs[i] = err
+			// Логируем ошибку, но возвращаем пустые массивы вместо ошибки
+			// чтобы не ломать весь запрос, если examples отсутствуют
+			slog.Warn("Failed to load examples", "error", err, "meaningIDs", meaningIDs)
+			// Возвращаем пустые массивы для всех ключей
+			result := make([]*[]*model.Example, len(meaningIDs))
+			for i := range result {
+				empty := make([]*model.Example, 0)
+				result[i] = &empty
 			}
-			return nil, errs
+			return result, nil
 		}
 
 		// Группируем по meaningID

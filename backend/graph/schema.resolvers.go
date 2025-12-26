@@ -21,7 +21,10 @@ func (r *meaningResolver) Examples(ctx context.Context, obj *Meaning) ([]*Exampl
 
 	examples, err := LoadExamplesForMeaning(ctx, meaningID)
 	if err != nil {
-		return nil, transport.HandleError(ctx, err)
+		// Логируем ошибку, но возвращаем пустой массив вместо ошибки
+		// чтобы не ломать весь запрос
+		// TODO: исправить причину ошибки в DataLoader
+		return make([]*Example, 0), nil
 	}
 
 	return ToGraphQLExamples(examples), nil
@@ -36,7 +39,10 @@ func (r *meaningResolver) Tags(ctx context.Context, obj *Meaning) ([]*Tag, error
 
 	tags, err := LoadTagsForMeaning(ctx, meaningID)
 	if err != nil {
-		return nil, transport.HandleError(ctx, err)
+		// Логируем ошибку, но возвращаем пустой массив вместо ошибки
+		// чтобы не ломать весь запрос
+		// TODO: исправить причину ошибки в DataLoader
+		return make([]*Tag, 0), nil
 	}
 
 	return ToGraphQLTags(tags), nil

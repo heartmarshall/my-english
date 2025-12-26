@@ -13,7 +13,7 @@ type AddWordInput struct {
 	Text          string          `json:"text"`
 	Transcription *string         `json:"transcription,omitempty"`
 	AudioURL      *string         `json:"audioUrl,omitempty"`
-	Meanings      []*MeaningInput `json:"meanings"`
+	Meanings      []*MeaningInput `json:"meanings,omitempty"`
 }
 
 type DashboardStats struct {
@@ -47,8 +47,8 @@ type Meaning struct {
 	Status        LearningStatus `json:"status"`
 	NextReviewAt  *Time          `json:"nextReviewAt,omitempty"`
 	ReviewCount   int            `json:"reviewCount"`
-	Examples      []*Example     `json:"examples"`
-	Tags          []*Tag         `json:"tags"`
+	Examples      []*Example     `json:"examples,omitempty"`
+	Tags          []*Tag         `json:"tags,omitempty"`
 }
 
 type MeaningInput struct {
@@ -77,7 +77,7 @@ type Word struct {
 	Transcription *string    `json:"transcription,omitempty"`
 	AudioURL      *string    `json:"audioUrl,omitempty"`
 	FrequencyRank *int       `json:"frequencyRank,omitempty"`
-	Meanings      []*Meaning `json:"meanings"`
+	Meanings      []*Meaning `json:"meanings,omitempty"`
 }
 
 type WordFilter struct {

@@ -162,32 +162,26 @@ func (t MeaningTable) InsertColumns() []string {
 
 // TagTable определяет схему таблицы tags
 type TagTable struct {
-	Name      Table
-	ID        Column
-	NameCol   Column
-	CreatedAt Column
-	UpdatedAt Column
+	Name    Table
+	ID      Column
+	NameCol Column
 }
 
 var Tags = TagTable{
-	Name:      "tags",
-	ID:        "tags.id",
-	NameCol:   "tags.name",
-	CreatedAt: "tags.created_at",
-	UpdatedAt: "tags.updated_at",
+	Name:    "tags",
+	ID:      "tags.id",
+	NameCol: "tags.name",
 }
 
 func (t TagTable) All() []string {
 	return []string{
 		string(t.ID),
 		string(t.NameCol),
-		string(t.CreatedAt),
-		string(t.UpdatedAt),
 	}
 }
 
 func (t TagTable) InsertColumns() []string {
-	return []string{"name", "created_at", "updated_at"}
+	return []string{"name"}
 }
 
 // ExampleTable определяет схему таблицы examples
@@ -198,8 +192,6 @@ type ExampleTable struct {
 	SentenceEn Column
 	SentenceRu Column
 	SourceName Column
-	CreatedAt  Column
-	UpdatedAt  Column
 }
 
 var Examples = ExampleTable{
@@ -209,8 +201,6 @@ var Examples = ExampleTable{
 	SentenceEn: "examples.sentence_en",
 	SentenceRu: "examples.sentence_ru",
 	SourceName: "examples.source_name",
-	CreatedAt:  "examples.created_at",
-	UpdatedAt:  "examples.updated_at",
 }
 
 func (t ExampleTable) All() []string {
@@ -220,13 +210,11 @@ func (t ExampleTable) All() []string {
 		string(t.SentenceEn),
 		string(t.SentenceRu),
 		string(t.SourceName),
-		string(t.CreatedAt),
-		string(t.UpdatedAt),
 	}
 }
 
 func (t ExampleTable) InsertColumns() []string {
-	return []string{"meaning_id", "sentence_en", "sentence_ru", "source_name", "created_at", "updated_at"}
+	return []string{"meaning_id", "sentence_en", "sentence_ru", "source_name"}
 }
 
 // MeaningTagTable определяет схему таблицы meanings_tags

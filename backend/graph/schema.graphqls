@@ -27,6 +27,25 @@ enum ExampleSource {
   PODCAST
 }
 
+enum CefrLevel {
+  A1
+  A2
+  B1
+  B2
+  C1
+  C2
+}
+
+enum SuggestionOrigin {
+  LOCAL      # Уже есть в словаре (избегаем дублей)
+  DICTIONARY # Найдено в стороннем словаре (Еще не загружено в словарь пользователя)
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String # Строка для запроса следующей страницы
+}
+
 # ---------------------------------------------------
 # TYPES (То, что отдаем на фронт)
 # ---------------------------------------------------
@@ -34,27 +53,40 @@ enum ExampleSource {
 type Word {
   id: ID!
   text: String!
-  transcription: String
+  # транскрипция слова. Необязательное поле.
+  transcription: String 
+  # url на аудиофайл слова. Необязательное поле.
   audioUrl: String
+  # Насколько часто слово встречается в современной речи. Необязательное поле.
   frequencyRank: Int
-  meanings: [Meaning!]!
+  # значения слова. Необязательное поле.
+  meanings: [Meaning!]
 }
 
 type Meaning {
   id: ID!
   wordId: ID!
   partOfSpeech: PartOfSpeech!
+  # Определение слова на английском языке. Необязательное поле.
   definitionEn: String
-  translationRu: String!
+  # перевод слова на русский язык. У слова может быть несколько переводов. Необязательное поле.
+  translationRu: [string] 
+  # уровень CEFR слова. Необязательное поле.
   cefrLevel: String
+  # url на изображение слова. Необязательное поле.
   imageUrl: String
   
+  # статус изучения слова. По умолчанию NEW.
   status: LearningStatus!
+  # дата следующего повторения слова. Необязательное поле.
   nextReviewAt: Time
+  # количество повторений слова. Изначально 0.
   reviewCount: Int!
   
-  examples: [Example!]!
-  tags: [Tag!]!
+  # примеры использования слова. Необязательное поле.
+  examples: [Example!]
+  # теги слова. Необязательное поле.
+  tags: [Tag!]
 }
 
 type Example {
@@ -76,23 +108,57 @@ type DashboardStats {
   dueForReviewCount: Int! 
 }
 
+# Элемент корзины входящих слов- сырое слово, которое еще не обработано. 
+# Пользователь закидывает сюда слова "на лету", чтобы потом разобрать в словарь
+type InboxItem {
+  id: ID!
+  text: String!
+  sourceContext: String # Например: "Harry Potter, page 50"
+  createdAt: Time!
+}
+
+type Suggestion {
+  text: String!
+  transcription: String
+  # Список возможных переводов.
+  translations: [String!]!
+  origin: SuggestionOrigin!
+  # Если origin == LOCAL, можно вернуть ID существующего слова, чтобы открыть его
+  existingWordId: ID 
+}
+
+# ---------------------------------------------------
+# CONNECTIONS (Для пагинации)
+# ---------------------------------------------------
+
+
+type WordEdge {
+  cursor: String!
+  node: Word!
+}
+
+type WordConnection {
+  edges: [WordEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 # ---------------------------------------------------
 # INPUTS (То, что принимаем с фронта)
 # ---------------------------------------------------
 
 input WordFilter {
-  search: String          # Поиск по тексту (LIKE %...%)
-  status: LearningStatus  # Фильтр по статусу (например, показать только New)
-  tags: [String!]         # Фильтр по тегам
+  search: String          # Поиск (Fuzzy Match через триграммы)
+  status: LearningStatus
+  tags: [String!]
 }
 
-# Input для создания нового слова (Complex Mutation)
-# Мы принимаем сразу и слово, и его смысл, и примеры
-input AddWordInput {
+input CreateWordInput {
   text: String!
   transcription: String
   audioUrl: String
-  meanings: [MeaningInput!]!
+  sourceContext: String   # Сохраняем контекст, где встретили слово
+  meanings: [MeaningInput!]
 }
 
 input MeaningInput {
@@ -116,13 +182,19 @@ input ExampleInput {
 
 type Query {
   # Основной список слов (словарь) с пагинацией
-  words(filter: WordFilter, limit: Int = 20, offset: Int = 0): [Word!]!
+  words(filter: WordFilter, first: Int = 20, after: String): WordConnection!
   
   # Детальный просмотр одного слова
   word(id: ID!): Word
+
+  # 3. Inbox (обычный список, пагинация тут редко нужна, т.к. цель - разобрать всё)
+  inboxItems: [InboxItem!]!
+
+  # 4. Умный поиск-подсказка (для автокомплита при добавлении)
+  # Ищет и в словаре пользователя, и в справочнике
+  suggest(query: String!): [Suggestion!]!
   
-  # Режим "Учить/Повторять". Возвращает список значений (Meanings),
-  # у которых nextReviewAt < NOW или status = NEW.
+  # 5. Режим "Учить"
   studyQueue(limit: Int = 10): [Meaning!]!
   
   # Дашборд
@@ -130,18 +202,27 @@ type Query {
 }
 
 type Mutation {
-  # Добавление нового слова со всеми потрохами
-  createWord(input: AddWordInput!): Word!
+  # Быстрое добавление "на бегу"
+  addToInbox(text: String!, sourceContext: String): InboxItem!
+
+  # Удаление из inbox (если передумал или мусор)
+  deleteInboxItem(id: ID!): Boolean!
+
+  # Превращение черновика в полноценное слово
+  # Успех удаляет InboxItem и создает Word
+  convertInboxItem(inboxId: ID!, input: CreateWordInput!): CreateWordPayload!
   
-  # Обновление слова (исправление опечаток)
-  updateWord(id: ID!, input: AddWordInput!): Word!
+  # Создание слова сразу начисто (минуя inbox)
+  createWord(input: CreateWordInput!): CreateWordPayload!
+
+  # Редактирование слова
+  updateWord(id: ID!, input: CreateWordInput!): UpdateWordPayload!
   
-  # Самая важная мутация для прогресса.
-  # Пользователь оценил, как хорошо он помнит слово.
-  # grade: Оценка от 1 (не помню) до 5 (отлично помню).
-  # Бэкенд сам пересчитает nextReviewAt и status.
-  reviewMeaning(meaningId: ID!, grade: Int!): Meaning!
-  
-  # Удаление (например, если добавил по ошибке)
+  # Удаление слова
   deleteWord(id: ID!): Boolean!
+
+  # --- Study Flow ---
+  
+  # Оценка слова (1-5). Возвращает обновленное состояние значения.
+  reviewMeaning(meaningId: ID!, grade: Int!): Meaning!
 }
