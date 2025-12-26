@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"encoding/base64"
 	"strconv"
 
 	"github.com/heartmarshall/my-english/internal/model"
@@ -50,6 +51,22 @@ func FromGraphQLPartOfSpeech(pos PartOfSpeech) model.PartOfSpeech {
 		return model.PartOfSpeechAdverb
 	default:
 		return model.PartOfSpeechOther
+	}
+}
+
+// FromGraphQLLearningStatus конвертирует GraphQL enum в domain enum.
+func FromGraphQLLearningStatus(status LearningStatus) model.LearningStatus {
+	switch status {
+	case LearningStatusNew:
+		return model.LearningStatusNew
+	case LearningStatusLearning:
+		return model.LearningStatusLearning
+	case LearningStatusReview:
+		return model.LearningStatusReview
+	case LearningStatusMastered:
+		return model.LearningStatusMastered
+	default:
+		return model.LearningStatusNew
 	}
 }
 
@@ -133,7 +150,7 @@ func ToGraphQLWord(w *model.Word, meanings []*Meaning) *Word {
 }
 
 // ToGraphQLMeaning конвертирует domain Meaning в GraphQL Meaning.
-func ToGraphQLMeaning(m *model.Meaning, examples []*Example, tags []*Tag) *Meaning {
+func ToGraphQLMeaning(m *model.Meaning, translations []model.Translation, examples []*Example, tags []*Tag) *Meaning {
 	if m == nil {
 		return nil
 	}
@@ -149,12 +166,25 @@ func ToGraphQLMeaning(m *model.Meaning, examples []*Example, tags []*Tag) *Meani
 		nextReviewAt = &t
 	}
 
+	// Преобразуем translations в массив строк
+	translationRuArray := make([]string, 0, len(translations))
+	for _, tr := range translations {
+		if tr.TranslationRu != "" {
+			translationRuArray = append(translationRuArray, tr.TranslationRu)
+		}
+	}
+	
+	// Fallback на старое поле для обратной совместимости
+	if len(translationRuArray) == 0 && m.TranslationRu != "" {
+		translationRuArray = []string{m.TranslationRu}
+	}
+
 	return &Meaning{
 		ID:            ToGraphQLID(m.ID),
 		WordID:        ToGraphQLID(m.WordID),
 		PartOfSpeech:  ToGraphQLPartOfSpeech(m.PartOfSpeech),
 		DefinitionEn:  m.DefinitionEn,
-		TranslationRu: m.TranslationRu,
+		TranslationRu: translationRuArray,
 		CefrLevel:     m.CefrLevel,
 		ImageURL:      m.ImageURL,
 		Status:        ToGraphQLLearningStatus(m.LearningStatus),
@@ -223,7 +253,7 @@ func ToGraphQLStats(s *model.Stats) *DashboardStats {
 // --- Input Conversion ---
 
 // ToCreateWordInput конвертирует GraphQL input в service input.
-func ToCreateWordInput(input AddWordInput) word.CreateWordInput {
+func ToCreateWordInput(input CreateWordInput) word.CreateWordInput {
 	meanings := make([]word.CreateMeaningInput, 0, len(input.Meanings))
 	for _, m := range input.Meanings {
 		meanings = append(meanings, ToCreateMeaningInput(m))
@@ -233,6 +263,7 @@ func ToCreateWordInput(input AddWordInput) word.CreateWordInput {
 		Text:          input.Text,
 		Transcription: input.Transcription,
 		AudioURL:      input.AudioURL,
+		SourceContext: input.SourceContext,
 		Meanings:      meanings,
 	}
 }
@@ -248,10 +279,16 @@ func ToCreateMeaningInput(input *MeaningInput) word.CreateMeaningInput {
 		examples = append(examples, ToCreateExampleInput(e))
 	}
 
+	// Конвертируем TranslationRu (string) в Translations ([]string)
+	translations := []string{}
+	if input.TranslationRu != "" {
+		translations = []string{input.TranslationRu}
+	}
+
 	return word.CreateMeaningInput{
 		PartOfSpeech:  FromGraphQLPartOfSpeech(input.PartOfSpeech),
 		DefinitionEn:  input.DefinitionEn,
-		TranslationRu: input.TranslationRu,
+		Translations:   translations,
 		ImageURL:      input.ImageURL,
 		Examples:      examples,
 		Tags:          input.Tags,
@@ -272,7 +309,7 @@ func ToCreateExampleInput(input *ExampleInput) word.CreateExampleInput {
 }
 
 // ToUpdateWordInput конвертирует GraphQL input в service update input.
-func ToUpdateWordInput(input AddWordInput) word.UpdateWordInput {
+func ToUpdateWordInput(input CreateWordInput) word.UpdateWordInput {
 	meanings := make([]word.UpdateMeaningInput, 0, len(input.Meanings))
 	for _, m := range input.Meanings {
 		meanings = append(meanings, ToUpdateMeaningInput(m))
@@ -282,6 +319,7 @@ func ToUpdateWordInput(input AddWordInput) word.UpdateWordInput {
 		Text:          input.Text,
 		Transcription: input.Transcription,
 		AudioURL:      input.AudioURL,
+		SourceContext: input.SourceContext,
 		Meanings:      meanings,
 	}
 }
@@ -297,10 +335,16 @@ func ToUpdateMeaningInput(input *MeaningInput) word.UpdateMeaningInput {
 		examples = append(examples, ToCreateExampleInput(e))
 	}
 
+	// Конвертируем TranslationRu (string) в Translations ([]string)
+	translations := []string{}
+	if input.TranslationRu != "" {
+		translations = []string{input.TranslationRu}
+	}
+
 	return word.UpdateMeaningInput{
 		PartOfSpeech:  FromGraphQLPartOfSpeech(input.PartOfSpeech),
 		DefinitionEn:  input.DefinitionEn,
-		TranslationRu: input.TranslationRu,
+		Translations:   translations,
 		ImageURL:      input.ImageURL,
 		Examples:      examples,
 		Tags:          input.Tags,
@@ -312,8 +356,17 @@ func ToWordFilter(filter *WordFilter) *word.WordFilter {
 	if filter == nil {
 		return nil
 	}
+	
+	var status *model.LearningStatus
+	if filter.Status != nil {
+		statusVal := FromGraphQLLearningStatus(*filter.Status)
+		status = &statusVal
+	}
+	
 	return &word.WordFilter{
 		Search: filter.Search,
+		Status: status,
+		Tags:   filter.Tags,
 	}
 }
 
@@ -350,6 +403,7 @@ func MeaningWithRelationsToGraphQL(mr *word.MeaningWithRelations) *Meaning {
 
 	return ToGraphQLMeaning(
 		&mr.Meaning,
+		mr.Translations,
 		ToGraphQLExamples(examples),
 		ToGraphQLTags(tags),
 	)
@@ -357,7 +411,8 @@ func MeaningWithRelationsToGraphQL(mr *word.MeaningWithRelations) *Meaning {
 
 // ToGraphQLMeaningBasic конвертирует domain Meaning в GraphQL Meaning без examples и tags.
 // Используется с field resolvers, которые загружают relations через DataLoader.
-func ToGraphQLMeaningBasic(m *model.Meaning) *Meaning {
+// translations могут быть переданы, если уже загружены, иначе будет использован fallback на TranslationRu
+func ToGraphQLMeaningBasic(m *model.Meaning, translations ...[]model.Translation) *Meaning {
 	if m == nil {
 		return nil
 	}
@@ -373,18 +428,34 @@ func ToGraphQLMeaningBasic(m *model.Meaning) *Meaning {
 		nextReviewAt = &t
 	}
 
+	// Преобразуем translations в массив строк
+	translationRuArray := []string{}
+	if len(translations) > 0 && len(translations[0]) > 0 {
+		for _, tr := range translations[0] {
+			if tr.TranslationRu != "" {
+				translationRuArray = append(translationRuArray, tr.TranslationRu)
+			}
+		}
+	}
+	
+	// Fallback на старое поле для обратной совместимости
+	if len(translationRuArray) == 0 && m.TranslationRu != "" {
+		translationRuArray = []string{m.TranslationRu}
+	}
+
 	return &Meaning{
 		ID:            ToGraphQLID(m.ID),
 		WordID:        ToGraphQLID(m.WordID),
 		PartOfSpeech:  ToGraphQLPartOfSpeech(m.PartOfSpeech),
 		DefinitionEn:  m.DefinitionEn,
-		TranslationRu: m.TranslationRu,
+		TranslationRu: translationRuArray,
 		CefrLevel:     m.CefrLevel,
 		ImageURL:      m.ImageURL,
 		Status:        ToGraphQLLearningStatus(m.LearningStatus),
 		NextReviewAt:  nextReviewAt,
 		ReviewCount:   reviewCount,
 		// Examples и Tags загрузятся через field resolvers
+		// TranslationRu также может загружаться через field resolver
 	}
 }
 
@@ -402,4 +473,92 @@ func ToGraphQLWordBasic(w *model.Word) *Word {
 		FrequencyRank: w.FrequencyRank,
 		// Meanings загрузятся через field resolver
 	}
+}
+
+// --- Cursor Pagination ---
+
+// EncodeCursor кодирует offset в base64 cursor.
+func EncodeCursor(offset int) string {
+	data := strconv.FormatInt(int64(offset), 10)
+	return base64.StdEncoding.EncodeToString([]byte(data))
+}
+
+// DecodeCursor декодирует base64 cursor в offset.
+func DecodeCursor(cursor string) (int, error) {
+	data, err := base64.StdEncoding.DecodeString(cursor)
+	if err != nil {
+		return 0, err
+	}
+	offset, err := strconv.ParseInt(string(data), 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return int(offset), nil
+}
+
+// --- InboxItem Conversion ---
+
+// ToGraphQLInboxItem конвертирует domain InboxItem в GraphQL InboxItem.
+func ToGraphQLInboxItem(item *model.InboxItem) *InboxItem {
+	if item == nil {
+		return nil
+	}
+	t := Time(item.CreatedAt)
+	return &InboxItem{
+		ID:           ToGraphQLID(item.ID),
+		Text:         item.Text,
+		SourceContext: item.SourceContext,
+		CreatedAt:    t,
+	}
+}
+
+// ToGraphQLInboxItems конвертирует slice domain InboxItems в GraphQL InboxItems.
+func ToGraphQLInboxItems(items []model.InboxItem) []*InboxItem {
+	result := make([]*InboxItem, 0, len(items))
+	for i := range items {
+		result = append(result, ToGraphQLInboxItem(&items[i]))
+	}
+	return result
+}
+
+// --- Suggestion Conversion ---
+
+// ToGraphQLSuggestion конвертирует service Suggestion в GraphQL Suggestion.
+func ToGraphQLSuggestion(s *word.Suggestion) *Suggestion {
+	if s == nil {
+		return nil
+	}
+
+	var existingWordID *string
+	if s.ExistingWordID != nil {
+		id := ToGraphQLID(*s.ExistingWordID)
+		existingWordID = &id
+	}
+
+	var origin SuggestionOrigin
+	switch s.Origin {
+	case "LOCAL":
+		origin = SuggestionOriginLocal
+	case "DICTIONARY":
+		origin = SuggestionOriginDictionary
+	default:
+		origin = SuggestionOriginLocal
+	}
+
+	return &Suggestion{
+		Text:           s.Text,
+		Transcription:  s.Transcription,
+		Translations:   s.Translations,
+		Origin:         origin,
+		ExistingWordID: existingWordID,
+	}
+}
+
+// ToGraphQLSuggestions конвертирует slice service Suggestions в GraphQL Suggestions.
+func ToGraphQLSuggestions(suggestions []word.Suggestion) []*Suggestion {
+	result := make([]*Suggestion, 0, len(suggestions))
+	for i := range suggestions {
+		result = append(result, ToGraphQLSuggestion(&suggestions[i]))
+	}
+	return result
 }

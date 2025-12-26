@@ -17,9 +17,10 @@ const loadersKey ctxKey = "dataloaders"
 
 // Loaders содержит все DataLoaders.
 type Loaders struct {
-	ExamplesByMeaningID *dataloadgen.Loader[int64, *[]*model.Example]
-	TagsByMeaningID     *dataloadgen.Loader[int64, *[]*model.Tag]
-	MeaningsByWordID    *dataloadgen.Loader[int64, *[]*model.Meaning]
+	ExamplesByMeaningID     *dataloadgen.Loader[int64, *[]*model.Example]
+	TagsByMeaningID         *dataloadgen.Loader[int64, *[]*model.Tag]
+	TranslationsByMeaningID *dataloadgen.Loader[int64, *[]*model.Translation]
+	MeaningsByWordID        *dataloadgen.Loader[int64, *[]*model.Meaning]
 }
 
 // LoaderService определяет интерфейс для batch-загрузки данных.
@@ -29,6 +30,7 @@ type LoaderService interface {
 	GetExamplesByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.Example, error)
 	GetTagsByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.MeaningTag, error)
 	GetTagsByIDs(ctx context.Context, ids []int64) ([]model.Tag, error)
+	GetTranslationsByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.Translation, error)
 }
 
 // LoaderDeps — зависимости для DataLoaders.
@@ -45,6 +47,10 @@ func NewLoaders(deps LoaderDeps) *Loaders {
 		),
 		TagsByMeaningID: dataloadgen.NewLoader(
 			newTagBatchFunc(deps.Loader),
+			dataloadgen.WithWait(2*time.Millisecond),
+		),
+		TranslationsByMeaningID: dataloadgen.NewLoader(
+			newTranslationBatchFunc(deps.Loader),
 			dataloadgen.WithWait(2*time.Millisecond),
 		),
 		MeaningsByWordID: dataloadgen.NewLoader(
@@ -261,4 +267,59 @@ func LoadMeaningsForWord(ctx context.Context, wordID int64) ([]*model.Meaning, e
 		return make([]*model.Meaning, 0), nil
 	}
 	return *meanings, nil
+}
+
+// newTranslationBatchFunc создаёт batch функцию для загрузки translations.
+func newTranslationBatchFunc(loader LoaderService) func(ctx context.Context, meaningIDs []int64) ([]*[]*model.Translation, []error) {
+	return func(ctx context.Context, meaningIDs []int64) ([]*[]*model.Translation, []error) {
+		// Загружаем все translations одним запросом
+		translations, err := loader.GetTranslationsByMeaningIDs(ctx, meaningIDs)
+		if err != nil {
+			// Логируем ошибку, но возвращаем пустые массивы вместо ошибки
+			// чтобы не ломать весь запрос, если translations отсутствуют
+			slog.Warn("Failed to load translations", "error", err, "meaningIDs", meaningIDs)
+			// Возвращаем пустые массивы для всех ключей
+			result := make([]*[]*model.Translation, len(meaningIDs))
+			for i := range result {
+				empty := make([]*model.Translation, 0)
+				result[i] = &empty
+			}
+			return result, nil
+		}
+
+		// Группируем по meaningID
+		grouped := make(map[int64][]*model.Translation)
+		for i := range translations {
+			tr := &translations[i]
+			grouped[tr.MeaningID] = append(grouped[tr.MeaningID], tr)
+		}
+
+		// Формируем результат в том же порядке, что и входные ключи
+		result := make([]*[]*model.Translation, len(meaningIDs))
+		for i, id := range meaningIDs {
+			trs := grouped[id]
+			if trs == nil {
+				trs = make([]*model.Translation, 0)
+			}
+			result[i] = &trs
+		}
+
+		return result, nil
+	}
+}
+
+// LoadTranslationsForMeaning загружает translations для meaning через DataLoader.
+func LoadTranslationsForMeaning(ctx context.Context, meaningID int64) ([]*model.Translation, error) {
+	loaders := GetLoaders(ctx)
+	if loaders == nil {
+		return make([]*model.Translation, 0), nil
+	}
+	translations, err := loaders.TranslationsByMeaningID.Load(ctx, meaningID)
+	if err != nil {
+		return nil, err
+	}
+	if translations == nil {
+		return make([]*model.Translation, 0), nil
+	}
+	return *translations, nil
 }

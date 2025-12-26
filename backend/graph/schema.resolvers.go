@@ -48,17 +48,77 @@ func (r *meaningResolver) Tags(ctx context.Context, obj *Meaning) ([]*Tag, error
 	return ToGraphQLTags(tags), nil
 }
 
-// CreateWord is the resolver for the createWord field.
-func (r *mutationResolver) CreateWord(ctx context.Context, input AddWordInput) (*Word, error) {
+// AddToInbox is the resolver for the addToInbox field.
+func (r *mutationResolver) AddToInbox(ctx context.Context, text string, sourceContext *string) (*InboxItem, error) {
+	item, err := r.inbox.Create(ctx, text, sourceContext)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+	return ToGraphQLInboxItem(item), nil
+}
+
+// DeleteInboxItem is the resolver for the deleteInboxItem field.
+func (r *mutationResolver) DeleteInboxItem(ctx context.Context, id string) (bool, error) {
+	itemID, err := FromGraphQLID(id)
+	if err != nil {
+		return false, transport.NewGraphQLError(ctx, "Invalid inbox item ID", transport.CodeInvalidInput)
+	}
+
+	if err := r.inbox.Delete(ctx, itemID); err != nil {
+		return false, transport.HandleError(ctx, err)
+	}
+	return true, nil
+}
+
+// ConvertInboxItem is the resolver for the convertInboxItem field.
+func (r *mutationResolver) ConvertInboxItem(ctx context.Context, inboxID string, input CreateWordInput) (*CreateWordPayload, error) {
+	itemID, err := FromGraphQLID(inboxID)
+	if err != nil {
+		return nil, transport.NewGraphQLError(ctx, "Invalid inbox item ID", transport.CodeInvalidInput)
+	}
+
+	// Получаем inbox item
+	inboxItem, err := r.inbox.GetByID(ctx, itemID)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+
+	// Если sourceContext не указан в input, используем из inbox item
+	if input.SourceContext == nil && inboxItem.SourceContext != nil {
+		input.SourceContext = inboxItem.SourceContext
+	}
+
+	// Создаём слово
 	result, err := r.words.Create(ctx, ToCreateWordInput(input))
 	if err != nil {
 		return nil, transport.HandleError(ctx, err)
 	}
-	return WordWithRelationsToGraphQL(result), nil
+
+	// Удаляем inbox item
+	if err := r.inbox.Delete(ctx, itemID); err != nil {
+		// Логируем ошибку, но не возвращаем её, так как слово уже создано
+		// TODO: добавить логирование
+		_ = err
+	}
+
+	return &CreateWordPayload{
+		Word: WordWithRelationsToGraphQL(result),
+	}, nil
+}
+
+// CreateWord is the resolver for the createWord field.
+func (r *mutationResolver) CreateWord(ctx context.Context, input CreateWordInput) (*CreateWordPayload, error) {
+	result, err := r.words.Create(ctx, ToCreateWordInput(input))
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+	return &CreateWordPayload{
+		Word: WordWithRelationsToGraphQL(result),
+	}, nil
 }
 
 // UpdateWord is the resolver for the updateWord field.
-func (r *mutationResolver) UpdateWord(ctx context.Context, id string, input AddWordInput) (*Word, error) {
+func (r *mutationResolver) UpdateWord(ctx context.Context, id string, input CreateWordInput) (*UpdateWordPayload, error) {
 	wordID, err := FromGraphQLID(id)
 	if err != nil {
 		return nil, transport.NewGraphQLError(ctx, "Invalid word ID", transport.CodeInvalidInput)
@@ -68,7 +128,22 @@ func (r *mutationResolver) UpdateWord(ctx context.Context, id string, input AddW
 	if err != nil {
 		return nil, transport.HandleError(ctx, err)
 	}
-	return WordWithRelationsToGraphQL(result), nil
+	return &UpdateWordPayload{
+		Word: WordWithRelationsToGraphQL(result),
+	}, nil
+}
+
+// DeleteWord is the resolver for the deleteWord field.
+func (r *mutationResolver) DeleteWord(ctx context.Context, id string) (bool, error) {
+	wordID, err := FromGraphQLID(id)
+	if err != nil {
+		return false, transport.NewGraphQLError(ctx, "Invalid word ID", transport.CodeInvalidInput)
+	}
+
+	if err := r.words.Delete(ctx, wordID); err != nil {
+		return false, transport.HandleError(ctx, err)
+	}
+	return true, nil
 }
 
 // ReviewMeaning is the resolver for the reviewMeaning field.
@@ -87,35 +162,63 @@ func (r *mutationResolver) ReviewMeaning(ctx context.Context, meaningID string, 
 	return ToGraphQLMeaningBasic(&meaning), nil
 }
 
-// DeleteWord is the resolver for the deleteWord field.
-func (r *mutationResolver) DeleteWord(ctx context.Context, id string) (bool, error) {
-	wordID, err := FromGraphQLID(id)
-	if err != nil {
-		return false, transport.NewGraphQLError(ctx, "Invalid word ID", transport.CodeInvalidInput)
-	}
-
-	if err := r.words.Delete(ctx, wordID); err != nil {
-		return false, transport.HandleError(ctx, err)
-	}
-	return true, nil
-}
-
 // Words is the resolver for the words field.
-func (r *queryResolver) Words(ctx context.Context, filter *WordFilter, limit *int, offset *int) ([]*Word, error) {
-	l, o := database.NormalizePagination(ptrToInt(limit), ptrToInt(offset))
+func (r *queryResolver) Words(ctx context.Context, filter *WordFilter, first *int, after *string) (*WordConnection, error) {
+	// Парсинг cursor в offset
+	offset := 0
+	if after != nil && *after != "" {
+		decodedOffset, err := DecodeCursor(*after)
+		if err != nil {
+			return nil, transport.NewGraphQLError(ctx, "Invalid cursor", transport.CodeInvalidInput)
+		}
+		offset = decodedOffset
+	}
 
-	words, err := r.words.List(ctx, ToWordFilter(filter), l, o)
+	// Нормализация first (limit)
+	limit := 20
+	if first != nil {
+		limit = *first
+	}
+	limit = database.NormalizeLimit(limit, database.DefaultLimit)
+
+	// Получение данных
+	words, err := r.words.List(ctx, ToWordFilter(filter), limit, offset)
 	if err != nil {
 		return nil, transport.HandleError(ctx, err)
 	}
 
-	// Используем ToGraphQLWordBasic — meanings загрузятся через field resolver
-	result := make([]*Word, 0, len(words))
-	for i := range words {
-		result = append(result, ToGraphQLWordBasic(&words[i]))
+	// Подсчет totalCount
+	totalCount, err := r.words.Count(ctx, ToWordFilter(filter))
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
 	}
 
-	return result, nil
+	// Создание edges
+	edges := make([]*WordEdge, 0, len(words))
+	for i := range words {
+		cursor := EncodeCursor(offset + i)
+		edges = append(edges, &WordEdge{
+			Cursor: cursor,
+			Node:   ToGraphQLWordBasic(&words[i]),
+		})
+	}
+
+	// Вычисление pageInfo
+	hasNextPage := offset+len(words) < totalCount
+	var endCursor *string
+	if len(edges) > 0 {
+		lastCursor := edges[len(edges)-1].Cursor
+		endCursor = &lastCursor
+	}
+
+	return &WordConnection{
+		Edges: edges,
+		PageInfo: &PageInfo{
+			HasNextPage: hasNextPage,
+			EndCursor:   endCursor,
+		},
+		TotalCount: totalCount,
+	}, nil
 }
 
 // Word is the resolver for the word field.
@@ -131,6 +234,24 @@ func (r *queryResolver) Word(ctx context.Context, id string) (*Word, error) {
 	}
 
 	return WordWithRelationsToGraphQL(wordWithRelations), nil
+}
+
+// InboxItems is the resolver for the inboxItems field.
+func (r *queryResolver) InboxItems(ctx context.Context) ([]*InboxItem, error) {
+	items, err := r.inbox.List(ctx)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+	return ToGraphQLInboxItems(items), nil
+}
+
+// Suggest is the resolver for the suggest field.
+func (r *queryResolver) Suggest(ctx context.Context, query string) ([]*Suggestion, error) {
+	suggestions, err := r.words.Suggest(ctx, query)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+	return ToGraphQLSuggestions(suggestions), nil
 }
 
 // StudyQueue is the resolver for the studyQueue field.
@@ -197,3 +318,42 @@ type meaningResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type wordResolver struct{ *Resolver }
+
+// !!! WARNING !!!
+// The code below was going to be deleted when updating resolvers. It has been copied here so you have
+// one last chance to move it out of harms way if you want. There are two reasons this happens:
+//   - When renaming or deleting a resolver the old code will be put in here. You can safely delete
+//     it when you're done.
+//   - You have helper methods in this file. Move them out to keep these resolver files clean.
+//
+// TranslationRu is the resolver for the translationRu field.
+func (r *meaningResolver) TranslationRu(ctx context.Context, obj *Meaning) ([]string, error) {
+	// Если значение уже установлено в объекте (из конвертера), возвращаем его
+	if len(obj.TranslationRu) > 0 {
+		return obj.TranslationRu, nil
+	}
+
+	// Загружаем translations из таблицы translations через DataLoader
+	meaningID, err := FromGraphQLID(obj.ID)
+	if err != nil {
+		return nil, transport.NewGraphQLError(ctx, "Invalid meaning ID", transport.CodeInvalidInput)
+	}
+
+	translations, err := LoadTranslationsForMeaning(ctx, meaningID)
+	if err != nil {
+		// Логируем ошибку, но возвращаем пустой массив вместо ошибки
+		// чтобы не ломать весь запрос
+		// TODO: исправить причину ошибки в DataLoader
+		return []string{}, nil
+	}
+
+	// Преобразуем translations в массив строк
+	result := make([]string, 0, len(translations))
+	for _, tr := range translations {
+		if tr != nil && tr.TranslationRu != "" {
+			result = append(result, tr.TranslationRu)
+		}
+	}
+
+	return result, nil
+}

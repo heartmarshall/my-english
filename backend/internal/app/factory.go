@@ -6,6 +6,7 @@ import (
 	"github.com/heartmarshall/my-english/internal/database/meaning"
 	"github.com/heartmarshall/my-english/internal/database/meaningtag"
 	"github.com/heartmarshall/my-english/internal/database/tag"
+	"github.com/heartmarshall/my-english/internal/database/translation"
 	"github.com/heartmarshall/my-english/internal/database/word"
 	wordservice "github.com/heartmarshall/my-english/internal/service/word"
 )
@@ -41,6 +42,11 @@ func (f *RepositoryFactory) Tags(q database.Querier) wordservice.TagRepository {
 // MeaningTags создаёт репозиторий связей meaning-tag.
 func (f *RepositoryFactory) MeaningTags(q database.Querier) wordservice.MeaningTagRepository {
 	return meaningtag.New(q)
+}
+
+// Translations создаёт репозиторий переводов.
+func (f *RepositoryFactory) Translations(q database.Querier) wordservice.TranslationRepository {
+	return translation.New(q)
 }
 
 // Compile-time check

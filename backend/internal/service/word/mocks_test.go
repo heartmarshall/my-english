@@ -25,11 +25,12 @@ func (m *mockTxRunner) RunInTx(ctx context.Context, fn func(ctx context.Context,
 
 // mockRepositoryFactory создаёт mock репозитории.
 type mockRepositoryFactory struct {
-	wordRepo       word.WordRepository
-	meaningRepo    word.MeaningRepository
-	exampleRepo    word.ExampleRepository
-	tagRepo        word.TagRepository
-	meaningTagRepo word.MeaningTagRepository
+	wordRepo        word.WordRepository
+	meaningRepo     word.MeaningRepository
+	exampleRepo     word.ExampleRepository
+	tagRepo         word.TagRepository
+	meaningTagRepo  word.MeaningTagRepository
+	translationRepo word.TranslationRepository
 }
 
 func (f *mockRepositoryFactory) Words(_ database.Querier) word.WordRepository {
@@ -52,14 +53,19 @@ func (f *mockRepositoryFactory) MeaningTags(_ database.Querier) word.MeaningTagR
 	return f.meaningTagRepo
 }
 
+func (f *mockRepositoryFactory) Translations(_ database.Querier) word.TranslationRepository {
+	return f.translationRepo
+}
+
 type mockWordRepository struct {
-	CreateFunc    func(ctx context.Context, word *model.Word) error
-	GetByIDFunc   func(ctx context.Context, id int64) (model.Word, error)
-	GetByTextFunc func(ctx context.Context, text string) (model.Word, error)
-	ListFunc      func(ctx context.Context, filter *model.WordFilter, limit, offset int) ([]model.Word, error)
-	CountFunc     func(ctx context.Context, filter *model.WordFilter) (int, error)
-	UpdateFunc    func(ctx context.Context, word *model.Word) error
-	DeleteFunc    func(ctx context.Context, id int64) error
+	CreateFunc        func(ctx context.Context, word *model.Word) error
+	GetByIDFunc       func(ctx context.Context, id int64) (model.Word, error)
+	GetByTextFunc     func(ctx context.Context, text string) (model.Word, error)
+	ListFunc          func(ctx context.Context, filter *model.WordFilter, limit, offset int) ([]model.Word, error)
+	CountFunc         func(ctx context.Context, filter *model.WordFilter) (int, error)
+	UpdateFunc        func(ctx context.Context, word *model.Word) error
+	DeleteFunc        func(ctx context.Context, id int64) error
+	SearchSimilarFunc func(ctx context.Context, query string, limit int, similarityThreshold float64) ([]model.Word, error)
 }
 
 func (m *mockWordRepository) Create(ctx context.Context, word *model.Word) error {
@@ -109,6 +115,13 @@ func (m *mockWordRepository) Delete(ctx context.Context, id int64) error {
 		return m.DeleteFunc(ctx, id)
 	}
 	return nil
+}
+
+func (m *mockWordRepository) SearchSimilar(ctx context.Context, query string, limit int, similarityThreshold float64) ([]model.Word, error) {
+	if m.SearchSimilarFunc != nil {
+		return m.SearchSimilarFunc(ctx, query, limit, similarityThreshold)
+	}
+	return []model.Word{}, nil
 }
 
 type mockMeaningRepository struct {

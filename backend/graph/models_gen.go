@@ -9,11 +9,16 @@ import (
 	"strconv"
 )
 
-type AddWordInput struct {
+type CreateWordInput struct {
 	Text          string          `json:"text"`
 	Transcription *string         `json:"transcription,omitempty"`
 	AudioURL      *string         `json:"audioUrl,omitempty"`
+	SourceContext *string         `json:"sourceContext,omitempty"`
 	Meanings      []*MeaningInput `json:"meanings,omitempty"`
+}
+
+type CreateWordPayload struct {
+	Word *Word `json:"word"`
 }
 
 type DashboardStats struct {
@@ -36,12 +41,19 @@ type ExampleInput struct {
 	SourceName *string `json:"sourceName,omitempty"`
 }
 
+type InboxItem struct {
+	ID            string  `json:"id"`
+	Text          string  `json:"text"`
+	SourceContext *string `json:"sourceContext,omitempty"`
+	CreatedAt     Time    `json:"createdAt"`
+}
+
 type Meaning struct {
 	ID            string         `json:"id"`
 	WordID        string         `json:"wordId"`
 	PartOfSpeech  PartOfSpeech   `json:"partOfSpeech"`
 	DefinitionEn  *string        `json:"definitionEn,omitempty"`
-	TranslationRu string         `json:"translationRu"`
+	TranslationRu []string       `json:"translationRu,omitempty"`
 	CefrLevel     *string        `json:"cefrLevel,omitempty"`
 	ImageURL      *string        `json:"imageUrl,omitempty"`
 	Status        LearningStatus `json:"status"`
@@ -63,12 +75,29 @@ type MeaningInput struct {
 type Mutation struct {
 }
 
+type PageInfo struct {
+	HasNextPage bool    `json:"hasNextPage"`
+	EndCursor   *string `json:"endCursor,omitempty"`
+}
+
 type Query struct {
+}
+
+type Suggestion struct {
+	Text           string           `json:"text"`
+	Transcription  *string          `json:"transcription,omitempty"`
+	Translations   []string         `json:"translations"`
+	Origin         SuggestionOrigin `json:"origin"`
+	ExistingWordID *string          `json:"existingWordId,omitempty"`
 }
 
 type Tag struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+type UpdateWordPayload struct {
+	Word *Word `json:"word"`
 }
 
 type Word struct {
@@ -80,10 +109,84 @@ type Word struct {
 	Meanings      []*Meaning `json:"meanings,omitempty"`
 }
 
+type WordConnection struct {
+	Edges      []*WordEdge `json:"edges"`
+	PageInfo   *PageInfo   `json:"pageInfo"`
+	TotalCount int         `json:"totalCount"`
+}
+
+type WordEdge struct {
+	Cursor string `json:"cursor"`
+	Node   *Word  `json:"node"`
+}
+
 type WordFilter struct {
 	Search *string         `json:"search,omitempty"`
 	Status *LearningStatus `json:"status,omitempty"`
 	Tags   []string        `json:"tags,omitempty"`
+}
+
+type CefrLevel string
+
+const (
+	CefrLevelA1 CefrLevel = "A1"
+	CefrLevelA2 CefrLevel = "A2"
+	CefrLevelB1 CefrLevel = "B1"
+	CefrLevelB2 CefrLevel = "B2"
+	CefrLevelC1 CefrLevel = "C1"
+	CefrLevelC2 CefrLevel = "C2"
+)
+
+var AllCefrLevel = []CefrLevel{
+	CefrLevelA1,
+	CefrLevelA2,
+	CefrLevelB1,
+	CefrLevelB2,
+	CefrLevelC1,
+	CefrLevelC2,
+}
+
+func (e CefrLevel) IsValid() bool {
+	switch e {
+	case CefrLevelA1, CefrLevelA2, CefrLevelB1, CefrLevelB2, CefrLevelC1, CefrLevelC2:
+		return true
+	}
+	return false
+}
+
+func (e CefrLevel) String() string {
+	return string(e)
+}
+
+func (e *CefrLevel) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = CefrLevel(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid CefrLevel", str)
+	}
+	return nil
+}
+
+func (e CefrLevel) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *CefrLevel) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e CefrLevel) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
 }
 
 type ExampleSource string
@@ -262,6 +365,61 @@ func (e *PartOfSpeech) UnmarshalJSON(b []byte) error {
 }
 
 func (e PartOfSpeech) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type SuggestionOrigin string
+
+const (
+	SuggestionOriginLocal      SuggestionOrigin = "LOCAL"
+	SuggestionOriginDictionary SuggestionOrigin = "DICTIONARY"
+)
+
+var AllSuggestionOrigin = []SuggestionOrigin{
+	SuggestionOriginLocal,
+	SuggestionOriginDictionary,
+}
+
+func (e SuggestionOrigin) IsValid() bool {
+	switch e {
+	case SuggestionOriginLocal, SuggestionOriginDictionary:
+		return true
+	}
+	return false
+}
+
+func (e SuggestionOrigin) String() string {
+	return string(e)
+}
+
+func (e *SuggestionOrigin) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SuggestionOrigin(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SuggestionOrigin", str)
+	}
+	return nil
+}
+
+func (e SuggestionOrigin) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *SuggestionOrigin) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e SuggestionOrigin) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

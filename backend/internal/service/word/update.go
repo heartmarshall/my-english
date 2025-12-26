@@ -72,7 +72,7 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateWordInput) (
 			createInput := CreateMeaningInput{
 				PartOfSpeech:  meaningInput.PartOfSpeech,
 				DefinitionEn:  meaningInput.DefinitionEn,
-				TranslationRu: meaningInput.TranslationRu,
+				Translations:   meaningInput.Translations,
 				CefrLevel:     meaningInput.CefrLevel,
 				ImageURL:      meaningInput.ImageURL,
 				Examples:      meaningInput.Examples,

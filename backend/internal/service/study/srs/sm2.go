@@ -73,7 +73,11 @@ func (s *SM2Strategy) Calculate(meaning *model.Meaning, grade int, now time.Time
 		// Определяем статус
 		if newInterval >= 21 {
 			newStatus = model.LearningStatusMastered
+		} else if meaning.LearningStatus == model.LearningStatusNew || newInterval < 6 {
+			// Первое повторение нового слова или маленький интервал -> LEARNING
+			newStatus = model.LearningStatusLearning
 		} else {
+			// Интервал >= 6 и < 21 -> REVIEW
 			newStatus = model.LearningStatusReview
 		}
 	}

@@ -70,7 +70,7 @@ type Meaning {
   # Определение слова на английском языке. Необязательное поле.
   definitionEn: String
   # перевод слова на русский язык. У слова может быть несколько переводов. Необязательное поле.
-  translationRu: [string] 
+  translationRu: [String!] 
   # уровень CEFR слова. Необязательное поле.
   cefrLevel: String
   # url на изображение слова. Необязательное поле.
@@ -106,6 +106,14 @@ type DashboardStats {
   masteredCount: Int!
   learningCount: Int!
   dueForReviewCount: Int! 
+}
+
+type CreateWordPayload {
+  word: Word!
+}
+
+type UpdateWordPayload {
+  word: Word!
 }
 
 # Элемент корзины входящих слов- сырое слово, которое еще не обработано. 

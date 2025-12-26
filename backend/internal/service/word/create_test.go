@@ -61,7 +61,7 @@ func TestService_Create(t *testing.T) {
 			Meanings: []word.CreateMeaningInput{
 				{
 					PartOfSpeech:  model.PartOfSpeechNoun,
-					TranslationRu: "привет",
+					Translations: []string{"привет"},
 					Examples: []word.CreateExampleInput{
 						{SentenceEn: "Hello, world!"},
 					},
@@ -97,7 +97,7 @@ func TestService_Create(t *testing.T) {
 
 		input := word.CreateWordInput{
 			Text:     "   ",
-			Meanings: []word.CreateMeaningInput{{TranslationRu: "тест"}},
+			Meanings: []word.CreateMeaningInput{{Translations: []string{"тест"}}},
 		}
 
 		_, err := svc.Create(ctx, input)
@@ -145,7 +145,7 @@ func TestService_Create(t *testing.T) {
 
 		input := word.CreateWordInput{
 			Text:     "hello",
-			Meanings: []word.CreateMeaningInput{{TranslationRu: "привет"}},
+			Meanings: []word.CreateMeaningInput{{Translations: []string{"привет"}}},
 		}
 
 		_, err := svc.Create(ctx, input)
@@ -193,7 +193,7 @@ func TestService_Create(t *testing.T) {
 		input := word.CreateWordInput{
 			Text: "hello",
 			Meanings: []word.CreateMeaningInput{
-				{PartOfSpeech: model.PartOfSpeechNoun, TranslationRu: ""},
+				{PartOfSpeech: model.PartOfSpeechNoun, Translations: []string{}},
 			},
 		}
 

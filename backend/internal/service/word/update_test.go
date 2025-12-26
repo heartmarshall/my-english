@@ -76,7 +76,7 @@ func TestService_Update(t *testing.T) {
 			Text:          "hello",
 			Transcription: &newTranscription,
 			Meanings: []word.UpdateMeaningInput{
-				{TranslationRu: "привет"},
+				{Translations: []string{"привет"}},
 			},
 		}
 
@@ -113,7 +113,7 @@ func TestService_Update(t *testing.T) {
 
 		input := word.UpdateWordInput{
 			Text:     "hello",
-			Meanings: []word.UpdateMeaningInput{{TranslationRu: "привет"}},
+			Meanings: []word.UpdateMeaningInput{{Translations: []string{"привет"}}},
 		}
 		_, err := svc.Update(ctx, 999, input)
 
@@ -180,7 +180,7 @@ func TestService_Update(t *testing.T) {
 			Text:          "hello",
 			Transcription: nil,
 			Meanings: []word.UpdateMeaningInput{
-				{TranslationRu: "привет"},
+				{Translations: []string{"привет"}},
 			},
 		}
 
@@ -223,7 +223,7 @@ func TestService_Update(t *testing.T) {
 
 		input := word.UpdateWordInput{
 			Text:     "world", // пытаемся изменить на уже существующее слово
-			Meanings: []word.UpdateMeaningInput{{TranslationRu: "мир"}},
+			Meanings: []word.UpdateMeaningInput{{Translations: []string{"мир"}}},
 		}
 
 		_, err := svc.Update(ctx, 1, input)

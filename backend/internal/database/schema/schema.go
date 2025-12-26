@@ -240,3 +240,183 @@ func (t MeaningTagTable) All() []string {
 func (t MeaningTagTable) InsertColumns() []string {
 	return []string{"meaning_id", "tag_id"}
 }
+
+// InboxItemTable определяет схему таблицы inbox_items
+type InboxItemTable struct {
+	Name          Table
+	ID            Column
+	Text          Column
+	SourceContext Column
+	CreatedAt     Column
+}
+
+var InboxItems = InboxItemTable{
+	Name:          "inbox_items",
+	ID:            "inbox_items.id",
+	Text:          "inbox_items.text",
+	SourceContext: "inbox_items.source_context",
+	CreatedAt:     "inbox_items.created_at",
+}
+
+func (t InboxItemTable) All() []string {
+	return []string{
+		string(t.ID),
+		string(t.Text),
+		string(t.SourceContext),
+		string(t.CreatedAt),
+	}
+}
+
+func (t InboxItemTable) InsertColumns() []string {
+	return []string{"text", "source_context", "created_at"}
+}
+
+// TranslationTable определяет схему таблицы translations
+type TranslationTable struct {
+	Name          Table
+	ID            Column
+	MeaningID     Column
+	TranslationRu Column
+	CreatedAt     Column
+}
+
+var Translations = TranslationTable{
+	Name:          "translations",
+	ID:            "translations.id",
+	MeaningID:     "translations.meaning_id",
+	TranslationRu: "translations.translation_ru",
+	CreatedAt:     "translations.created_at",
+}
+
+func (t TranslationTable) All() []string {
+	return []string{
+		string(t.ID),
+		string(t.MeaningID),
+		string(t.TranslationRu),
+		string(t.CreatedAt),
+	}
+}
+
+func (t TranslationTable) InsertColumns() []string {
+	return []string{"meaning_id", "translation_ru", "created_at"}
+}
+
+// DictionaryWordTable определяет схему таблицы dictionary_words
+type DictionaryWordTable struct {
+	Name          Table
+	ID            Column
+	Text          Column
+	Transcription Column
+	AudioURL      Column
+	FrequencyRank Column
+	Source        Column
+	SourceID      Column
+	CreatedAt     Column
+	UpdatedAt     Column
+}
+
+var DictionaryWords = DictionaryWordTable{
+	Name:          "dictionary_words",
+	ID:            "dictionary_words.id",
+	Text:          "dictionary_words.text",
+	Transcription: "dictionary_words.transcription",
+	AudioURL:      "dictionary_words.audio_url",
+	FrequencyRank: "dictionary_words.frequency_rank",
+	Source:        "dictionary_words.source",
+	SourceID:      "dictionary_words.source_id",
+	CreatedAt:     "dictionary_words.created_at",
+	UpdatedAt:     "dictionary_words.updated_at",
+}
+
+func (t DictionaryWordTable) All() []string {
+	return []string{
+		string(t.ID),
+		string(t.Text),
+		string(t.Transcription),
+		string(t.AudioURL),
+		string(t.FrequencyRank),
+		string(t.Source),
+		string(t.SourceID),
+		string(t.CreatedAt),
+		string(t.UpdatedAt),
+	}
+}
+
+func (t DictionaryWordTable) InsertColumns() []string {
+	return []string{"text", "transcription", "audio_url", "frequency_rank", "source", "source_id", "created_at", "updated_at"}
+}
+
+// DictionaryMeaningTable определяет схему таблицы dictionary_meanings
+type DictionaryMeaningTable struct {
+	Name            Table
+	ID              Column
+	DictionaryWordID Column
+	PartOfSpeech    Column
+	DefinitionEn    Column
+	CefrLevel       Column
+	ImageURL        Column
+	OrderIndex      Column
+	CreatedAt       Column
+	UpdatedAt       Column
+}
+
+var DictionaryMeanings = DictionaryMeaningTable{
+	Name:            "dictionary_meanings",
+	ID:              "dictionary_meanings.id",
+	DictionaryWordID: "dictionary_meanings.dictionary_word_id",
+	PartOfSpeech:    "dictionary_meanings.part_of_speech",
+	DefinitionEn:    "dictionary_meanings.definition_en",
+	CefrLevel:       "dictionary_meanings.cefr_level",
+	ImageURL:        "dictionary_meanings.image_url",
+	OrderIndex:      "dictionary_meanings.order_index",
+	CreatedAt:       "dictionary_meanings.created_at",
+	UpdatedAt:       "dictionary_meanings.updated_at",
+}
+
+func (t DictionaryMeaningTable) All() []string {
+	return []string{
+		string(t.ID),
+		string(t.DictionaryWordID),
+		string(t.PartOfSpeech),
+		string(t.DefinitionEn),
+		string(t.CefrLevel),
+		string(t.ImageURL),
+		string(t.OrderIndex),
+		string(t.CreatedAt),
+		string(t.UpdatedAt),
+	}
+}
+
+func (t DictionaryMeaningTable) InsertColumns() []string {
+	return []string{"dictionary_word_id", "part_of_speech", "definition_en", "cefr_level", "image_url", "order_index", "created_at", "updated_at"}
+}
+
+// DictionaryTranslationTable определяет схему таблицы dictionary_translations
+type DictionaryTranslationTable struct {
+	Name                Table
+	ID                  Column
+	DictionaryMeaningID Column
+	TranslationRu       Column
+	CreatedAt           Column
+}
+
+var DictionaryTranslations = DictionaryTranslationTable{
+	Name:                "dictionary_translations",
+	ID:                  "dictionary_translations.id",
+	DictionaryMeaningID: "dictionary_translations.dictionary_meaning_id",
+	TranslationRu:       "dictionary_translations.translation_ru",
+	CreatedAt:           "dictionary_translations.created_at",
+}
+
+func (t DictionaryTranslationTable) All() []string {
+	return []string{
+		string(t.ID),
+		string(t.DictionaryMeaningID),
+		string(t.TranslationRu),
+		string(t.CreatedAt),
+	}
+}
+
+func (t DictionaryTranslationTable) InsertColumns() []string {
+	return []string{"dictionary_meaning_id", "translation_ru", "created_at"}
+}

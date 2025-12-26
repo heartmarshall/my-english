@@ -18,6 +18,7 @@ type WordService interface {
 	Count(ctx context.Context, filter *word.WordFilter) (int, error)
 	Update(ctx context.Context, id int64, input word.UpdateWordInput) (*word.WordWithRelations, error)
 	Delete(ctx context.Context, id int64) error
+	Suggest(ctx context.Context, query string) ([]word.Suggestion, error)
 }
 
 // StudyService определяет интерфейс для системы изучения.
@@ -27,11 +28,20 @@ type StudyService interface {
 	ReviewMeaning(ctx context.Context, meaningID int64, grade int) (model.Meaning, error)
 }
 
+// InboxService определяет интерфейс для работы с inbox.
+type InboxService interface {
+	Create(ctx context.Context, text string, sourceContext *string) (*model.InboxItem, error)
+	GetByID(ctx context.Context, id int64) (*model.InboxItem, error)
+	List(ctx context.Context) ([]model.InboxItem, error)
+	Delete(ctx context.Context, id int64) error
+}
+
 // Deps — зависимости для резолвера.
 // Resolver использует только сервисы, не репозитории.
 type Deps struct {
 	Words WordService
 	Study StudyService
+	Inbox InboxService
 }
 
 // Resolver — корневой резолвер GraphQL.
@@ -39,6 +49,7 @@ type Deps struct {
 type Resolver struct {
 	words WordService
 	study StudyService
+	inbox InboxService
 }
 
 // NewResolver создаёт новый резолвер с зависимостями.
@@ -46,5 +57,6 @@ func NewResolver(deps Deps) *Resolver {
 	return &Resolver{
 		words: deps.Words,
 		study: deps.Study,
+		inbox: deps.Inbox,
 	}
 }

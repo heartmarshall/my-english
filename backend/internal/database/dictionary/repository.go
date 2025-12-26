@@ -1,0 +1,35 @@
+package dictionary
+
+import (
+	"github.com/heartmarshall/my-english/internal/database"
+)
+
+// Repo — реализация репозитория для работы с dictionary_words.
+type Repo struct {
+	q     database.Querier
+	clock database.Clock
+}
+
+// Option — функциональная опция для конфигурации Repo.
+type Option func(*Repo)
+
+// WithClock устанавливает кастомный clock (полезно для тестов).
+func WithClock(c database.Clock) Option {
+	return func(r *Repo) {
+		r.clock = c
+	}
+}
+
+// New создаёт новый репозиторий.
+func New(q database.Querier, opts ...Option) *Repo {
+	r := &Repo{
+		q:     q,
+		clock: database.DefaultClock,
+	}
+
+	for _, opt := range opts {
+		opt(r)
+	}
+
+	return r
+}

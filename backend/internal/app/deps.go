@@ -5,11 +5,15 @@ import (
 
 	"github.com/heartmarshall/my-english/graph"
 	"github.com/heartmarshall/my-english/internal/database"
+	"github.com/heartmarshall/my-english/internal/database/dictionary"
 	"github.com/heartmarshall/my-english/internal/database/example"
+	inboxrepo "github.com/heartmarshall/my-english/internal/database/inbox"
 	"github.com/heartmarshall/my-english/internal/database/meaning"
 	"github.com/heartmarshall/my-english/internal/database/meaningtag"
 	"github.com/heartmarshall/my-english/internal/database/tag"
+	"github.com/heartmarshall/my-english/internal/database/translation"
 	"github.com/heartmarshall/my-english/internal/database/word"
+	inboxservice "github.com/heartmarshall/my-english/internal/service/inbox"
 	"github.com/heartmarshall/my-english/internal/service/loader"
 	"github.com/heartmarshall/my-english/internal/service/study"
 	wordservice "github.com/heartmarshall/my-english/internal/service/word"
@@ -38,11 +42,14 @@ var _ wordservice.TxRunner = (*TxRunner)(nil)
 
 // Repositories содержит все репозитории.
 type Repositories struct {
-	Words      *word.Repo
-	Meanings   *meaning.Repo
-	Examples   *example.Repo
-	Tags       *tag.Repo
-	MeaningTag *meaningtag.Repo
+	Words        *word.Repo
+	Meanings     *meaning.Repo
+	Examples     *example.Repo
+	Tags         *tag.Repo
+	MeaningTag   *meaningtag.Repo
+	Translations *translation.Repo
+	Dictionary   *dictionary.Repo
+	Inbox        *inboxrepo.Repo
 }
 
 // Services содержит все сервисы.
@@ -50,6 +57,7 @@ type Services struct {
 	Words  *wordservice.Service
 	Study  *study.Service
 	Loader *loader.Service
+	Inbox  *inboxservice.Service
 }
 
 // Dependencies содержит все зависимости приложения.
@@ -85,24 +93,29 @@ func NewDependencies(pool *pgxpool.Pool) *Dependencies {
 
 func newRepositories(pool *pgxpool.Pool) *Repositories {
 	return &Repositories{
-		Words:      word.New(pool),
-		Meanings:   meaning.New(pool, meaning.WithClock(database.RealClock{})),
-		Examples:   example.New(pool),
-		Tags:       tag.New(pool),
-		MeaningTag: meaningtag.New(pool),
+		Words:        word.New(pool),
+		Meanings:     meaning.New(pool, meaning.WithClock(database.RealClock{})),
+		Examples:     example.New(pool),
+		Tags:         tag.New(pool),
+		MeaningTag:   meaningtag.New(pool),
+		Translations: translation.New(pool),
+		Dictionary:   dictionary.New(pool, dictionary.WithClock(database.RealClock{})),
+		Inbox:        inboxrepo.New(pool, inboxrepo.WithClock(database.RealClock{})),
 	}
 }
 
 func newServices(repos *Repositories, txRunner *TxRunner, repoFactory *RepositoryFactory) *Services {
 	// Word Service
 	wordSvc := wordservice.New(wordservice.Deps{
-		Words:       repos.Words,
-		Meanings:    repos.Meanings,
-		Examples:    repos.Examples,
-		Tags:        repos.Tags,
-		MeaningTag:  repos.MeaningTag,
-		TxRunner:    txRunner,
-		RepoFactory: repoFactory,
+		Words:        repos.Words,
+		Meanings:     repos.Meanings,
+		Examples:     repos.Examples,
+		Tags:         repos.Tags,
+		MeaningTag:   repos.MeaningTag,
+		Translations: repos.Translations,
+		Dictionary:   repos.Dictionary,
+		TxRunner:     txRunner,
+		RepoFactory:  repoFactory,
 	})
 
 	// Study Service — используем SRS адаптер
@@ -115,16 +128,23 @@ func newServices(repos *Repositories, txRunner *TxRunner, repoFactory *Repositor
 
 	// Loader Service для DataLoaders
 	loaderSvc := loader.New(loader.Deps{
-		Meanings:    repos.Meanings,
-		Examples:    repos.Examples,
-		Tags:        repos.Tags,
-		MeaningTags: repos.MeaningTag,
+		Meanings:     repos.Meanings,
+		Examples:     repos.Examples,
+		Tags:         repos.Tags,
+		MeaningTags:  repos.MeaningTag,
+		Translations: repos.Translations,
+	})
+
+	// Inbox Service
+	inboxSvc := inboxservice.New(inboxservice.Deps{
+		Inbox: repos.Inbox,
 	})
 
 	return &Services{
 		Words:  wordSvc,
 		Study:  studySvc,
 		Loader: loaderSvc,
+		Inbox:  inboxSvc,
 	}
 }
 
@@ -133,5 +153,6 @@ func newResolver(services *Services) *graph.Resolver {
 	return graph.NewResolver(graph.Deps{
 		Words: services.Words,
 		Study: services.Study,
+		Inbox: services.Inbox,
 	})
 }

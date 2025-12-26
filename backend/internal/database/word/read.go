@@ -2,6 +2,8 @@ package word
 
 import (
 	"context"
+	"strconv"
+	"strings"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/heartmarshall/my-english/internal/database"
@@ -46,8 +48,20 @@ func (r *Repo) GetByText(ctx context.Context, text string) (model.Word, error) {
 func (r *Repo) List(ctx context.Context, filter *model.WordFilter, limit, offset int) ([]model.Word, error) {
 	limit, offset = database.NormalizePagination(limit, offset)
 
+	// Если есть поиск, используем триграммный поиск с прямой SQL
+	if filter != nil && filter.Search != nil && *filter.Search != "" {
+		return r.listWithTrigramSearch(ctx, filter, limit, offset)
+	}
+
+	// Обычный поиск без триграмм
+	selectCols := make([]string, 0, len(schema.Words.All()))
+	for _, col := range schema.Words.All() {
+		selectCols = append(selectCols, string(col))
+	}
+
 	qb := database.Builder.
-		Select(schema.Words.All()...).
+		Select(selectCols...).
+		Distinct().
 		From(schema.Words.Name.String())
 
 	qb = applyFilter(qb, filter)
@@ -65,8 +79,120 @@ func (r *Repo) List(ctx context.Context, filter *model.WordFilter, limit, offset
 	return database.Select[model.Word](ctx, r.q, query, args...)
 }
 
+// listWithTrigramSearch выполняет поиск с использованием триграмм
+func (r *Repo) listWithTrigramSearch(ctx context.Context, filter *model.WordFilter, limit, offset int) ([]model.Word, error) {
+	searchQuery := *filter.Search
+	similarityThreshold := 0.2
+
+	// Формируем базовый SELECT с similarity
+	selectCols := make([]string, 0, len(schema.Words.All())+1)
+	for _, col := range schema.Words.All() {
+		selectCols = append(selectCols, string(col))
+	}
+	selectCols = append(selectCols, "word_similarity($1, "+string(schema.Words.Text)+") AS similarity")
+
+	// Начинаем формировать SQL запрос
+	var query strings.Builder
+	query.WriteString("SELECT ")
+	query.WriteString(strings.Join(selectCols, ", "))
+	query.WriteString(" FROM ")
+	query.WriteString(schema.Words.Name.String())
+
+	args := []interface{}{searchQuery}
+	argIndex := 2 // $1 уже используется для searchQuery
+
+	// Добавляем WHERE условия для триграммного поиска
+	whereConditions := []string{
+		"word_similarity($1, " + string(schema.Words.Text) + ") > $" + strconv.Itoa(argIndex) + " OR " +
+			string(schema.Words.Text) + " % $1 OR " +
+			string(schema.Words.Text) + " ILIKE $" + strconv.Itoa(argIndex+1),
+	}
+	args = append(args, similarityThreshold, "%"+searchQuery+"%")
+	argIndex += 2
+
+	// Добавляем JOIN и условия для статуса
+	if filter.Status != nil {
+		query.WriteString(" JOIN ")
+		query.WriteString(schema.Meanings.Name.String())
+		query.WriteString(" ON ")
+		query.WriteString(string(schema.Meanings.WordID))
+		query.WriteString(" = ")
+		query.WriteString(string(schema.Words.ID))
+		whereConditions = append(whereConditions, string(schema.Meanings.LearningStatus)+" = $"+strconv.Itoa(argIndex))
+		args = append(args, *filter.Status)
+		argIndex++
+	}
+
+	// Добавляем JOIN и условия для тегов
+	if len(filter.Tags) > 0 {
+		if filter.Status == nil {
+			query.WriteString(" JOIN ")
+			query.WriteString(schema.Meanings.Name.String())
+			query.WriteString(" ON ")
+			query.WriteString(string(schema.Meanings.WordID))
+			query.WriteString(" = ")
+			query.WriteString(string(schema.Words.ID))
+		}
+		query.WriteString(" JOIN ")
+		query.WriteString(schema.MeaningTags.Name.String())
+		query.WriteString(" ON ")
+		query.WriteString(string(schema.MeaningTags.MeaningID))
+		query.WriteString(" = ")
+		query.WriteString(string(schema.Meanings.ID))
+		query.WriteString(" JOIN ")
+		query.WriteString(schema.Tags.Name.String())
+		query.WriteString(" ON ")
+		query.WriteString(string(schema.Tags.ID))
+		query.WriteString(" = ")
+		query.WriteString(string(schema.MeaningTags.TagID))
+
+		// Формируем IN условие для тегов
+		tagPlaceholders := make([]string, len(filter.Tags))
+		for i := range filter.Tags {
+			tagPlaceholders[i] = "$" + strconv.Itoa(argIndex)
+			args = append(args, filter.Tags[i])
+			argIndex++
+		}
+		whereConditions = append(whereConditions, string(schema.Tags.NameCol)+" IN ("+strings.Join(tagPlaceholders, ", ")+")")
+	}
+
+	// Объединяем WHERE условия
+	if len(whereConditions) > 0 {
+		query.WriteString(" WHERE ")
+		query.WriteString(strings.Join(whereConditions, " AND "))
+	}
+
+	// Добавляем DISTINCT если есть JOIN
+	needsDistinct := filter.Status != nil || len(filter.Tags) > 0
+	if needsDistinct {
+		baseQuery := query.String()
+		query.Reset()
+		query.WriteString("SELECT DISTINCT ON (")
+		query.WriteString(string(schema.Words.ID))
+		query.WriteString(") ")
+		query.WriteString(strings.Join(selectCols, ", "))
+		query.WriteString(" FROM (")
+		query.WriteString(baseQuery)
+		query.WriteString(") AS subquery")
+	}
+
+	// Добавляем сортировку и пагинацию
+	query.WriteString(" ORDER BY similarity DESC, ")
+	query.WriteString(string(schema.Words.CreatedAt))
+	query.WriteString(" DESC LIMIT $")
+	query.WriteString(strconv.Itoa(argIndex))
+	query.WriteString(" OFFSET $")
+	query.WriteString(strconv.Itoa(argIndex + 1))
+	args = append(args, limit, offset)
+
+	return database.Select[model.Word](ctx, r.q, query.String(), args...)
+}
+
 func (r *Repo) Count(ctx context.Context, filter *model.WordFilter) (int, error) {
-	qb := database.Builder.Select("COUNT(*)").From(schema.Words.Name.String())
+	// Используем COUNT(DISTINCT words.id) для правильного подсчета при JOIN
+	qb := database.Builder.
+		Select("COUNT(DISTINCT " + string(schema.Words.ID) + ")").
+		From(schema.Words.Name.String())
 	qb = applyFilter(qb, filter)
 
 	query, args, err := qb.ToSql()
@@ -90,12 +216,81 @@ func (r *Repo) Exists(ctx context.Context, id int64) (bool, error) {
 	return database.CheckExists(ctx, r.q, query, args...)
 }
 
+// SearchSimilar использует триграммный поиск для поиска похожих слов.
+// Возвращает слова, отсортированные по similarity (от большего к меньшему).
+// similarityThreshold - минимальный порог схожести (0.0 - 1.0), по умолчанию 0.3
+func (r *Repo) SearchSimilar(ctx context.Context, query string, limit int, similarityThreshold float64) ([]model.Word, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	if similarityThreshold <= 0 {
+		similarityThreshold = 0.3 // Порог по умолчанию
+	}
+
+	// Используем word_similarity для более точного поиска
+	// word_similarity ищет похожие слова, а не подстроки
+	// Формируем SELECT с similarity для сортировки
+	selectCols := make([]string, 0, len(schema.Words.All()))
+	for _, col := range schema.Words.All() {
+		selectCols = append(selectCols, string(col))
+	}
+
+	// Используем прямой SQL запрос, так как squirrel не поддерживает функции pg_trgm напрямую
+	// word_similarity(query, text) > threshold AND text % query (оператор % для триграмм)
+	sqlQuery := `
+		SELECT ` + strings.Join(selectCols, ", ") + `
+		FROM ` + schema.Words.Name.String() + `
+		WHERE word_similarity($1, ` + string(schema.Words.Text) + `) > $2
+		   OR ` + string(schema.Words.Text) + ` % $1
+		ORDER BY word_similarity($1, ` + string(schema.Words.Text) + `) DESC
+		LIMIT $3
+	`
+
+	args := []interface{}{query, similarityThreshold, limit}
+
+	words, err := database.Select[model.Word](ctx, r.q, sqlQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	return words, nil
+}
+
 func applyFilter(qb squirrel.SelectBuilder, filter *model.WordFilter) squirrel.SelectBuilder {
 	if filter == nil {
 		return qb
 	}
+
+	// Фильтр по поиску - обрабатывается отдельно в listWithTrigramSearch
+	// Здесь оставляем пустым, так как триграммный поиск требует прямой SQL
 	if filter.Search != nil && *filter.Search != "" {
-		return qb.Where(schema.Words.Text.ILike("%" + *filter.Search + "%"))
+		// Пропускаем здесь, обработаем в List через listWithTrigramSearch
 	}
+
+	// Фильтр по статусу изучения (требует JOIN с meanings)
+	if filter.Status != nil {
+		qb = qb.
+			Join(schema.Meanings.Name.String() + " ON " + string(schema.Meanings.WordID) + " = " + string(schema.Words.ID)).
+			Where(schema.Meanings.LearningStatus.Eq(*filter.Status))
+	}
+
+	// Фильтр по тегам (требует JOIN с meanings_tags и tags)
+	if len(filter.Tags) > 0 {
+		// JOIN с meanings для связи word -> meaning
+		needsMeaningsJoin := filter.Status == nil
+		if needsMeaningsJoin {
+			qb = qb.Join(schema.Meanings.Name.String() + " ON " + string(schema.Meanings.WordID) + " = " + string(schema.Words.ID))
+		}
+
+		// JOIN с meanings_tags
+		qb = qb.Join(schema.MeaningTags.Name.String() + " ON " + string(schema.MeaningTags.MeaningID) + " = " + string(schema.Meanings.ID))
+
+		// JOIN с tags
+		qb = qb.Join(schema.Tags.Name.String() + " ON " + string(schema.Tags.ID) + " = " + string(schema.MeaningTags.TagID))
+
+		// WHERE по именам тегов
+		qb = qb.Where(schema.Tags.NameCol.In(filter.Tags))
+	}
+
 	return qb
 }

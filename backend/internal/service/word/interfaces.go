@@ -17,6 +17,7 @@ type WordRepository interface {
 	Count(ctx context.Context, filter *model.WordFilter) (int, error)
 	Update(ctx context.Context, word *model.Word) error
 	Delete(ctx context.Context, id int64) error
+	SearchSimilar(ctx context.Context, query string, limit int, similarityThreshold float64) ([]model.Word, error)
 }
 
 // MeaningRepository определяет интерфейс для работы со значениями.
@@ -46,6 +47,24 @@ type TagRepository interface {
 	GetOrCreate(ctx context.Context, name string) (model.Tag, error)
 }
 
+// TranslationRepository определяет интерфейс для работы с переводами.
+type TranslationRepository interface {
+	GetByMeaningID(ctx context.Context, meaningID int64) ([]model.Translation, error)
+	GetByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.Translation, error)
+	Create(ctx context.Context, translation *model.Translation) error
+	CreateBatch(ctx context.Context, translations []*model.Translation) error
+	DeleteByMeaningID(ctx context.Context, meaningID int64) error
+}
+
+// DictionaryRepository определяет интерфейс для работы с внутренним словарём.
+type DictionaryRepository interface {
+	GetByText(ctx context.Context, text string) (model.DictionaryWord, error)
+	SearchSimilar(ctx context.Context, query string, limit int, similarityThreshold float64) ([]model.DictionaryWord, error)
+	GetMeaningsByWordID(ctx context.Context, wordID int64) ([]model.DictionaryMeaning, error)
+	GetTranslationsByMeaningID(ctx context.Context, meaningID int64) ([]model.DictionaryTranslation, error)
+	GetTranslationsByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.DictionaryTranslation, error)
+}
+
 // MeaningTagRepository определяет интерфейс для связи meaning-tag.
 type MeaningTagRepository interface {
 	AttachTags(ctx context.Context, meaningID int64, tagIDs []int64) error
@@ -63,6 +82,7 @@ type RepositoryFactory interface {
 	Examples(q database.Querier) ExampleRepository
 	Tags(q database.Querier) TagRepository
 	MeaningTags(q database.Querier) MeaningTagRepository
+	Translations(q database.Querier) TranslationRepository
 }
 
 // TxRunner определяет интерфейс для запуска транзакций.

@@ -74,16 +74,17 @@ func (s *Service) Create(ctx context.Context, input CreateWordInput) (*WordWithR
 
 // createMeaningTx создаёт meaning с примерами и тегами в рамках транзакции.
 func (s *Service) createMeaningTx(ctx context.Context, r *repos, wordID int64, input CreateMeaningInput) (*MeaningWithRelations, error) {
-	if input.TranslationRu == "" {
+	if len(input.Translations) == 0 {
 		return nil, service.ErrInvalidInput
 	}
 
-	// Создаём meaning
+	// Создаём meaning (translation_ru оставляем пустым или используем первый перевод для обратной совместимости)
+	firstTranslation := input.Translations[0]
 	meaning := &model.Meaning{
 		WordID:        wordID,
 		PartOfSpeech:  input.PartOfSpeech,
 		DefinitionEn:  input.DefinitionEn,
-		TranslationRu: input.TranslationRu,
+		TranslationRu: firstTranslation, // Для обратной совместимости, но основное хранилище - translations
 		CefrLevel:     input.CefrLevel,
 		ImageURL:      input.ImageURL,
 	}
@@ -92,10 +93,36 @@ func (s *Service) createMeaningTx(ctx context.Context, r *repos, wordID int64, i
 		return nil, err
 	}
 
+	// Создаём translations
+	translations := make([]*model.Translation, 0, len(input.Translations))
+	now := database.DefaultClock.Now()
+	for _, tr := range input.Translations {
+		if tr == "" {
+			continue
+		}
+		translations = append(translations, &model.Translation{
+			MeaningID:     meaning.ID,
+			TranslationRu: tr,
+			CreatedAt:     now,
+		})
+	}
+
+	if len(translations) > 0 {
+		if err := r.translations.CreateBatch(ctx, translations); err != nil {
+			return nil, err
+		}
+	}
+
 	result := MeaningWithRelations{
-		Meaning:  *meaning,
-		Examples: make([]model.Example, 0),
-		Tags:     make([]model.Tag, 0),
+		Meaning:      *meaning,
+		Translations: make([]model.Translation, len(translations)),
+		Examples:     make([]model.Example, 0),
+		Tags:         make([]model.Tag, 0),
+	}
+
+	// Конвертируем translations
+	for i, t := range translations {
+		result.Translations[i] = *t
 	}
 
 	// Создаём примеры

@@ -36,6 +36,16 @@ func New(cfg config.Config) (*App, error) {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
+	return NewWithPool(cfg, pool)
+}
+
+// NewWithPool создаёт новое приложение с готовым пулом соединений.
+// Полезно для тестирования, когда пул уже создан (например, через testcontainers).
+func NewWithPool(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
+	// Инициализация логгера
+	logger := NewLogger(cfg.Log)
+	slog.SetDefault(logger)
+
 	// Инициализация зависимостей
 	deps := NewDependencies(pool)
 
@@ -84,6 +94,11 @@ func (a *App) Run() error {
 	}
 
 	return a.Shutdown()
+}
+
+// Server возвращает HTTP сервер (для тестирования).
+func (a *App) Server() *http.Server {
+	return a.server
 }
 
 // Shutdown gracefully завершает приложение.

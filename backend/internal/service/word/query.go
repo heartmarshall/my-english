@@ -42,6 +42,8 @@ func (s *Service) List(ctx context.Context, filter *WordFilter, limit, offset in
 	if filter != nil {
 		modelFilter = &model.WordFilter{
 			Search: filter.Search,
+			Status: filter.Status,
+			Tags:   filter.Tags,
 		}
 	}
 
@@ -54,6 +56,8 @@ func (s *Service) Count(ctx context.Context, filter *WordFilter) (int, error) {
 	if filter != nil {
 		modelFilter = &model.WordFilter{
 			Search: filter.Search,
+			Status: filter.Status,
+			Tags:   filter.Tags,
 		}
 	}
 
@@ -84,6 +88,12 @@ func (s *Service) loadRelations(ctx context.Context, word model.Word) (*WordWith
 
 	// Загружаем примеры для всех meanings
 	examples, err := s.examples.GetByMeaningIDs(ctx, meaningIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Загружаем translations для всех meanings
+	translations, err := s.translations.GetByMeaningIDs(ctx, meaningIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -120,6 +130,11 @@ func (s *Service) loadRelations(ctx context.Context, word model.Word) (*WordWith
 		examplesByMeaning[ex.MeaningID] = append(examplesByMeaning[ex.MeaningID], ex)
 	}
 
+	translationsByMeaning := make(map[int64][]model.Translation)
+	for _, tr := range translations {
+		translationsByMeaning[tr.MeaningID] = append(translationsByMeaning[tr.MeaningID], tr)
+	}
+
 	tagsByID := make(map[int64]model.Tag)
 	for _, t := range tags {
 		tagsByID[t.ID] = t
@@ -133,13 +148,17 @@ func (s *Service) loadRelations(ctx context.Context, word model.Word) (*WordWith
 	// Собираем результат
 	for _, m := range meanings {
 		mr := MeaningWithRelations{
-			Meaning:  m,
-			Examples: examplesByMeaning[m.ID],
-			Tags:     make([]model.Tag, 0),
+			Meaning:     m,
+			Translations: translationsByMeaning[m.ID],
+			Examples:    examplesByMeaning[m.ID],
+			Tags:        make([]model.Tag, 0),
 		}
 
 		if mr.Examples == nil {
 			mr.Examples = make([]model.Example, 0)
+		}
+		if mr.Translations == nil {
+			mr.Translations = make([]model.Translation, 0)
 		}
 
 		for _, tagID := range tagIDsByMeaning[m.ID] {

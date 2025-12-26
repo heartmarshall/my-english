@@ -132,10 +132,66 @@ func (r *Repo) GetByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model
 	return database.Select[model.MeaningTag](ctx, r.q, query, args...)
 }
 
+// SyncTags синхронизирует теги для meaning, выполняя только необходимые операции.
+// Вычисляет разницу между текущими и новыми тегами, чтобы избежать лишних операций.
 func (r *Repo) SyncTags(ctx context.Context, meaningID int64, tagIDs []int64) error {
-	// TODO: Оптимизировать через вычисление Diff (insert/delete), чтобы избежать bloat таблицы
-	if err := r.DetachAllFromMeaning(ctx, meaningID); err != nil {
+	// Получаем текущие теги
+	currentTagIDs, err := r.GetTagIDsByMeaningID(ctx, meaningID)
+	if err != nil {
 		return err
 	}
-	return r.AttachTags(ctx, meaningID, tagIDs)
+
+	// Вычисляем diff: какие теги нужно добавить, а какие удалить
+	toAdd, toRemove := computeTagDiff(currentTagIDs, tagIDs)
+
+	// Удаляем теги, которых больше нет
+	if len(toRemove) > 0 {
+		for _, tagID := range toRemove {
+			if err := r.DetachTag(ctx, meaningID, tagID); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Добавляем новые теги
+	if len(toAdd) > 0 {
+		if err := r.AttachTags(ctx, meaningID, toAdd); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// computeTagDiff вычисляет разницу между текущими и новыми тегами.
+// Возвращает слайсы тегов для добавления и удаления.
+func computeTagDiff(current, desired []int64) (toAdd, toRemove []int64) {
+	// Создаем мапы для быстрого поиска
+	currentMap := make(map[int64]bool, len(current))
+	for _, id := range current {
+		currentMap[id] = true
+	}
+
+	desiredMap := make(map[int64]bool, len(desired))
+	for _, id := range desired {
+		desiredMap[id] = true
+	}
+
+	// Находим теги для добавления (есть в desired, но нет в current)
+	toAdd = make([]int64, 0)
+	for _, id := range desired {
+		if !currentMap[id] {
+			toAdd = append(toAdd, id)
+		}
+	}
+
+	// Находим теги для удаления (есть в current, но нет в desired)
+	toRemove = make([]int64, 0)
+	for _, id := range current {
+		if !desiredMap[id] {
+			toRemove = append(toRemove, id)
+		}
+	}
+
+	return toAdd, toRemove
 }

@@ -19,6 +19,8 @@ type Word struct {
 // WordFilter содержит параметры фильтрации при поиске слов
 type WordFilter struct {
 	Search *string
+	Status *LearningStatus
+	Tags   []string
 }
 
 // LearningStatus представляет статус изучения слова
@@ -195,4 +197,54 @@ type Tag struct {
 type MeaningTag struct {
 	MeaningID int64 `db:"meaning_id"`
 	TagID     int64 `db:"tag_id"`
+}
+
+// InboxItem представляет элемент корзины входящих слов
+type InboxItem struct {
+	ID           int64     `db:"id"`
+	Text         string    `db:"text"`
+	SourceContext *string   `db:"source_context"`
+	CreatedAt    time.Time `db:"created_at"`
+}
+
+// Translation представляет перевод значения слова
+type Translation struct {
+	ID            int64     `db:"id"`
+	MeaningID     int64     `db:"meaning_id"`
+	TranslationRu string    `db:"translation_ru"`
+	CreatedAt     time.Time `db:"created_at"`
+}
+
+// DictionaryWord представляет слово из внутреннего словаря (не пользовательского)
+type DictionaryWord struct {
+	ID            int64     `db:"id"`
+	Text          string    `db:"text"`
+	Transcription *string   `db:"transcription"`
+	AudioURL      *string   `db:"audio_url"`
+	FrequencyRank *int      `db:"frequency_rank"`
+	Source        string    `db:"source"`        // Источник: 'free_dictionary', 'oxford', 'custom' и т.д.
+	SourceID      *string   `db:"source_id"`    // ID слова в источнике
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at"`
+}
+
+// DictionaryMeaning представляет значение слова из внутреннего словаря
+type DictionaryMeaning struct {
+	ID              int64        `db:"id"`
+	DictionaryWordID int64        `db:"dictionary_word_id"`
+	PartOfSpeech    PartOfSpeech `db:"part_of_speech"`
+	DefinitionEn    *string      `db:"definition_en"`
+	CefrLevel       *string      `db:"cefr_level"`
+	ImageURL        *string      `db:"image_url"`
+	OrderIndex      int          `db:"order_index"`
+	CreatedAt       time.Time    `db:"created_at"`
+	UpdatedAt       time.Time    `db:"updated_at"`
+}
+
+// DictionaryTranslation представляет перевод значения из внутреннего словаря
+type DictionaryTranslation struct {
+	ID                  int64     `db:"id"`
+	DictionaryMeaningID int64     `db:"dictionary_meaning_id"`
+	TranslationRu       string    `db:"translation_ru"`
+	CreatedAt           time.Time `db:"created_at"`
 }

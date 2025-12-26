@@ -28,29 +28,37 @@ type MeaningTagRepository interface {
 	GetByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.MeaningTag, error)
 }
 
+// TranslationRepository определяет интерфейс для загрузки translations.
+type TranslationRepository interface {
+	GetByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.Translation, error)
+}
+
 // Deps — зависимости сервиса.
 type Deps struct {
-	Meanings    MeaningRepository
-	Examples    ExampleRepository
-	Tags        TagRepository
-	MeaningTags MeaningTagRepository
+	Meanings     MeaningRepository
+	Examples     ExampleRepository
+	Tags         TagRepository
+	MeaningTags  MeaningTagRepository
+	Translations TranslationRepository
 }
 
 // Service предоставляет batch-операции для DataLoader.
 type Service struct {
-	meanings    MeaningRepository
-	examples    ExampleRepository
-	tags        TagRepository
-	meaningTags MeaningTagRepository
+	meanings     MeaningRepository
+	examples     ExampleRepository
+	tags         TagRepository
+	meaningTags  MeaningTagRepository
+	translations TranslationRepository
 }
 
 // New создаёт новый сервис.
 func New(deps Deps) *Service {
 	return &Service{
-		meanings:    deps.Meanings,
-		examples:    deps.Examples,
-		tags:        deps.Tags,
-		meaningTags: deps.MeaningTags,
+		meanings:     deps.Meanings,
+		examples:     deps.Examples,
+		tags:         deps.Tags,
+		meaningTags:  deps.MeaningTags,
+		translations: deps.Translations,
 	}
 }
 
@@ -73,4 +81,9 @@ func (s *Service) GetTagsByMeaningIDs(ctx context.Context, meaningIDs []int64) (
 // GetTagsByIDs загружает теги по ID.
 func (s *Service) GetTagsByIDs(ctx context.Context, ids []int64) ([]model.Tag, error) {
 	return s.tags.GetByIDs(ctx, ids)
+}
+
+// GetTranslationsByMeaningIDs загружает translations для нескольких meanings.
+func (s *Service) GetTranslationsByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.Translation, error) {
+	return s.translations.GetByMeaningIDs(ctx, meaningIDs)
 }

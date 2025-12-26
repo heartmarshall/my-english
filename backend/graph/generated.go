@@ -48,6 +48,10 @@ type DirectiveRoot struct {
 }
 
 type ComplexityRoot struct {
+	CreateWordPayload struct {
+		Word func(childComplexity int) int
+	}
+
 	DashboardStats struct {
 		DueForReviewCount func(childComplexity int) int
 		LearningCount     func(childComplexity int) int
@@ -60,6 +64,13 @@ type ComplexityRoot struct {
 		SentenceEn func(childComplexity int) int
 		SentenceRu func(childComplexity int) int
 		SourceName func(childComplexity int) int
+	}
+
+	InboxItem struct {
+		CreatedAt     func(childComplexity int) int
+		ID            func(childComplexity int) int
+		SourceContext func(childComplexity int) int
+		Text          func(childComplexity int) int
 	}
 
 	Meaning struct {
@@ -78,22 +89,44 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		CreateWord    func(childComplexity int, input AddWordInput) int
-		DeleteWord    func(childComplexity int, id string) int
-		ReviewMeaning func(childComplexity int, meaningID string, grade int) int
-		UpdateWord    func(childComplexity int, id string, input AddWordInput) int
+		AddToInbox       func(childComplexity int, text string, sourceContext *string) int
+		ConvertInboxItem func(childComplexity int, inboxID string, input CreateWordInput) int
+		CreateWord       func(childComplexity int, input CreateWordInput) int
+		DeleteInboxItem  func(childComplexity int, id string) int
+		DeleteWord       func(childComplexity int, id string) int
+		ReviewMeaning    func(childComplexity int, meaningID string, grade int) int
+		UpdateWord       func(childComplexity int, id string, input CreateWordInput) int
+	}
+
+	PageInfo struct {
+		EndCursor   func(childComplexity int) int
+		HasNextPage func(childComplexity int) int
 	}
 
 	Query struct {
+		InboxItems func(childComplexity int) int
 		Stats      func(childComplexity int) int
 		StudyQueue func(childComplexity int, limit *int) int
+		Suggest    func(childComplexity int, query string) int
 		Word       func(childComplexity int, id string) int
-		Words      func(childComplexity int, filter *WordFilter, limit *int, offset *int) int
+		Words      func(childComplexity int, filter *WordFilter, first *int, after *string) int
+	}
+
+	Suggestion struct {
+		ExistingWordID func(childComplexity int) int
+		Origin         func(childComplexity int) int
+		Text           func(childComplexity int) int
+		Transcription  func(childComplexity int) int
+		Translations   func(childComplexity int) int
 	}
 
 	Tag struct {
 		ID   func(childComplexity int) int
 		Name func(childComplexity int) int
+	}
+
+	UpdateWordPayload struct {
+		Word func(childComplexity int) int
 	}
 
 	Word struct {
@@ -104,6 +137,17 @@ type ComplexityRoot struct {
 		Text          func(childComplexity int) int
 		Transcription func(childComplexity int) int
 	}
+
+	WordConnection struct {
+		Edges      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	WordEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
+	}
 }
 
 type MeaningResolver interface {
@@ -111,14 +155,19 @@ type MeaningResolver interface {
 	Tags(ctx context.Context, obj *Meaning) ([]*Tag, error)
 }
 type MutationResolver interface {
-	CreateWord(ctx context.Context, input AddWordInput) (*Word, error)
-	UpdateWord(ctx context.Context, id string, input AddWordInput) (*Word, error)
-	ReviewMeaning(ctx context.Context, meaningID string, grade int) (*Meaning, error)
+	AddToInbox(ctx context.Context, text string, sourceContext *string) (*InboxItem, error)
+	DeleteInboxItem(ctx context.Context, id string) (bool, error)
+	ConvertInboxItem(ctx context.Context, inboxID string, input CreateWordInput) (*CreateWordPayload, error)
+	CreateWord(ctx context.Context, input CreateWordInput) (*CreateWordPayload, error)
+	UpdateWord(ctx context.Context, id string, input CreateWordInput) (*UpdateWordPayload, error)
 	DeleteWord(ctx context.Context, id string) (bool, error)
+	ReviewMeaning(ctx context.Context, meaningID string, grade int) (*Meaning, error)
 }
 type QueryResolver interface {
-	Words(ctx context.Context, filter *WordFilter, limit *int, offset *int) ([]*Word, error)
+	Words(ctx context.Context, filter *WordFilter, first *int, after *string) (*WordConnection, error)
 	Word(ctx context.Context, id string) (*Word, error)
+	InboxItems(ctx context.Context) ([]*InboxItem, error)
+	Suggest(ctx context.Context, query string) ([]*Suggestion, error)
 	StudyQueue(ctx context.Context, limit *int) ([]*Meaning, error)
 	Stats(ctx context.Context) (*DashboardStats, error)
 }
@@ -144,6 +193,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 	ec := executionContext{nil, e, 0, 0, nil}
 	_ = ec
 	switch typeName + "." + field {
+
+	case "CreateWordPayload.word":
+		if e.complexity.CreateWordPayload.Word == nil {
+			break
+		}
+
+		return e.complexity.CreateWordPayload.Word(childComplexity), true
 
 	case "DashboardStats.dueForReviewCount":
 		if e.complexity.DashboardStats.DueForReviewCount == nil {
@@ -194,6 +250,31 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Example.SourceName(childComplexity), true
+
+	case "InboxItem.createdAt":
+		if e.complexity.InboxItem.CreatedAt == nil {
+			break
+		}
+
+		return e.complexity.InboxItem.CreatedAt(childComplexity), true
+	case "InboxItem.id":
+		if e.complexity.InboxItem.ID == nil {
+			break
+		}
+
+		return e.complexity.InboxItem.ID(childComplexity), true
+	case "InboxItem.sourceContext":
+		if e.complexity.InboxItem.SourceContext == nil {
+			break
+		}
+
+		return e.complexity.InboxItem.SourceContext(childComplexity), true
+	case "InboxItem.text":
+		if e.complexity.InboxItem.Text == nil {
+			break
+		}
+
+		return e.complexity.InboxItem.Text(childComplexity), true
 
 	case "Meaning.cefrLevel":
 		if e.complexity.Meaning.CefrLevel == nil {
@@ -268,6 +349,28 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Meaning.WordID(childComplexity), true
 
+	case "Mutation.addToInbox":
+		if e.complexity.Mutation.AddToInbox == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_addToInbox_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.AddToInbox(childComplexity, args["text"].(string), args["sourceContext"].(*string)), true
+	case "Mutation.convertInboxItem":
+		if e.complexity.Mutation.ConvertInboxItem == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_convertInboxItem_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.ConvertInboxItem(childComplexity, args["inboxId"].(string), args["input"].(CreateWordInput)), true
 	case "Mutation.createWord":
 		if e.complexity.Mutation.CreateWord == nil {
 			break
@@ -278,7 +381,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.CreateWord(childComplexity, args["input"].(AddWordInput)), true
+		return e.complexity.Mutation.CreateWord(childComplexity, args["input"].(CreateWordInput)), true
+	case "Mutation.deleteInboxItem":
+		if e.complexity.Mutation.DeleteInboxItem == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_deleteInboxItem_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.DeleteInboxItem(childComplexity, args["id"].(string)), true
 	case "Mutation.deleteWord":
 		if e.complexity.Mutation.DeleteWord == nil {
 			break
@@ -311,8 +425,27 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.UpdateWord(childComplexity, args["id"].(string), args["input"].(AddWordInput)), true
+		return e.complexity.Mutation.UpdateWord(childComplexity, args["id"].(string), args["input"].(CreateWordInput)), true
 
+	case "PageInfo.endCursor":
+		if e.complexity.PageInfo.EndCursor == nil {
+			break
+		}
+
+		return e.complexity.PageInfo.EndCursor(childComplexity), true
+	case "PageInfo.hasNextPage":
+		if e.complexity.PageInfo.HasNextPage == nil {
+			break
+		}
+
+		return e.complexity.PageInfo.HasNextPage(childComplexity), true
+
+	case "Query.inboxItems":
+		if e.complexity.Query.InboxItems == nil {
+			break
+		}
+
+		return e.complexity.Query.InboxItems(childComplexity), true
 	case "Query.stats":
 		if e.complexity.Query.Stats == nil {
 			break
@@ -330,6 +463,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.StudyQueue(childComplexity, args["limit"].(*int)), true
+	case "Query.suggest":
+		if e.complexity.Query.Suggest == nil {
+			break
+		}
+
+		args, err := ec.field_Query_suggest_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.Suggest(childComplexity, args["query"].(string)), true
 	case "Query.word":
 		if e.complexity.Query.Word == nil {
 			break
@@ -351,7 +495,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Query.Words(childComplexity, args["filter"].(*WordFilter), args["limit"].(*int), args["offset"].(*int)), true
+		return e.complexity.Query.Words(childComplexity, args["filter"].(*WordFilter), args["first"].(*int), args["after"].(*string)), true
+
+	case "Suggestion.existingWordId":
+		if e.complexity.Suggestion.ExistingWordID == nil {
+			break
+		}
+
+		return e.complexity.Suggestion.ExistingWordID(childComplexity), true
+	case "Suggestion.origin":
+		if e.complexity.Suggestion.Origin == nil {
+			break
+		}
+
+		return e.complexity.Suggestion.Origin(childComplexity), true
+	case "Suggestion.text":
+		if e.complexity.Suggestion.Text == nil {
+			break
+		}
+
+		return e.complexity.Suggestion.Text(childComplexity), true
+	case "Suggestion.transcription":
+		if e.complexity.Suggestion.Transcription == nil {
+			break
+		}
+
+		return e.complexity.Suggestion.Transcription(childComplexity), true
+	case "Suggestion.translations":
+		if e.complexity.Suggestion.Translations == nil {
+			break
+		}
+
+		return e.complexity.Suggestion.Translations(childComplexity), true
 
 	case "Tag.id":
 		if e.complexity.Tag.ID == nil {
@@ -365,6 +540,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Tag.Name(childComplexity), true
+
+	case "UpdateWordPayload.word":
+		if e.complexity.UpdateWordPayload.Word == nil {
+			break
+		}
+
+		return e.complexity.UpdateWordPayload.Word(childComplexity), true
 
 	case "Word.audioUrl":
 		if e.complexity.Word.AudioURL == nil {
@@ -403,6 +585,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Word.Transcription(childComplexity), true
 
+	case "WordConnection.edges":
+		if e.complexity.WordConnection.Edges == nil {
+			break
+		}
+
+		return e.complexity.WordConnection.Edges(childComplexity), true
+	case "WordConnection.pageInfo":
+		if e.complexity.WordConnection.PageInfo == nil {
+			break
+		}
+
+		return e.complexity.WordConnection.PageInfo(childComplexity), true
+	case "WordConnection.totalCount":
+		if e.complexity.WordConnection.TotalCount == nil {
+			break
+		}
+
+		return e.complexity.WordConnection.TotalCount(childComplexity), true
+
+	case "WordEdge.cursor":
+		if e.complexity.WordEdge.Cursor == nil {
+			break
+		}
+
+		return e.complexity.WordEdge.Cursor(childComplexity), true
+	case "WordEdge.node":
+		if e.complexity.WordEdge.Node == nil {
+			break
+		}
+
+		return e.complexity.WordEdge.Node(childComplexity), true
+
 	}
 	return 0, false
 }
@@ -411,7 +625,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	opCtx := graphql.GetOperationContext(ctx)
 	ec := executionContext{opCtx, e, 0, 0, make(chan graphql.DeferredResult)}
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
-		ec.unmarshalInputAddWordInput,
+		ec.unmarshalInputCreateWordInput,
 		ec.unmarshalInputExampleInput,
 		ec.unmarshalInputMeaningInput,
 		ec.unmarshalInputWordFilter,
@@ -531,14 +745,57 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 
 // region    ***************************** args.gotpl *****************************
 
+func (ec *executionContext) field_Mutation_addToInbox_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "text", ec.unmarshalNString2string)
+	if err != nil {
+		return nil, err
+	}
+	args["text"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "sourceContext", ec.unmarshalOString2ᚖstring)
+	if err != nil {
+		return nil, err
+	}
+	args["sourceContext"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_convertInboxItem_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "inboxId", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["inboxId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNCreateWordInput2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐCreateWordInput)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg1
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_createWord_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNAddWordInput2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐAddWordInput)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNCreateWordInput2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐCreateWordInput)
 	if err != nil {
 		return nil, err
 	}
 	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_deleteInboxItem_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
 	return args, nil
 }
 
@@ -577,7 +834,7 @@ func (ec *executionContext) field_Mutation_updateWord_args(ctx context.Context, 
 		return nil, err
 	}
 	args["id"] = arg0
-	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNAddWordInput2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐAddWordInput)
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNCreateWordInput2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐCreateWordInput)
 	if err != nil {
 		return nil, err
 	}
@@ -607,6 +864,17 @@ func (ec *executionContext) field_Query_studyQueue_args(ctx context.Context, raw
 	return args, nil
 }
 
+func (ec *executionContext) field_Query_suggest_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "query", ec.unmarshalNString2string)
+	if err != nil {
+		return nil, err
+	}
+	args["query"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Query_word_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -626,16 +894,16 @@ func (ec *executionContext) field_Query_words_args(ctx context.Context, rawArgs 
 		return nil, err
 	}
 	args["filter"] = arg0
-	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "limit", ec.unmarshalOInt2ᚖint)
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "first", ec.unmarshalOInt2ᚖint)
 	if err != nil {
 		return nil, err
 	}
-	args["limit"] = arg1
-	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "offset", ec.unmarshalOInt2ᚖint)
+	args["first"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "after", ec.unmarshalOString2ᚖstring)
 	if err != nil {
 		return nil, err
 	}
-	args["offset"] = arg2
+	args["after"] = arg2
 	return args, nil
 }
 
@@ -690,6 +958,49 @@ func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArg
 // endregion ************************** directives.gotpl **************************
 
 // region    **************************** field.gotpl *****************************
+
+func (ec *executionContext) _CreateWordPayload_word(ctx context.Context, field graphql.CollectedField, obj *CreateWordPayload) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_CreateWordPayload_word,
+		func(ctx context.Context) (any, error) {
+			return obj.Word, nil
+		},
+		nil,
+		ec.marshalNWord2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWord,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_CreateWordPayload_word(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CreateWordPayload",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Word_id(ctx, field)
+			case "text":
+				return ec.fieldContext_Word_text(ctx, field)
+			case "transcription":
+				return ec.fieldContext_Word_transcription(ctx, field)
+			case "audioUrl":
+				return ec.fieldContext_Word_audioUrl(ctx, field)
+			case "frequencyRank":
+				return ec.fieldContext_Word_frequencyRank(ctx, field)
+			case "meanings":
+				return ec.fieldContext_Word_meanings(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Word", field.Name)
+		},
+	}
+	return fc, nil
+}
 
 func (ec *executionContext) _DashboardStats_totalWords(ctx context.Context, field graphql.CollectedField, obj *DashboardStats) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
@@ -923,6 +1234,122 @@ func (ec *executionContext) fieldContext_Example_sourceName(_ context.Context, f
 	return fc, nil
 }
 
+func (ec *executionContext) _InboxItem_id(ctx context.Context, field graphql.CollectedField, obj *InboxItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_InboxItem_id,
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_InboxItem_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "InboxItem",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _InboxItem_text(ctx context.Context, field graphql.CollectedField, obj *InboxItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_InboxItem_text,
+		func(ctx context.Context) (any, error) {
+			return obj.Text, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_InboxItem_text(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "InboxItem",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _InboxItem_sourceContext(ctx context.Context, field graphql.CollectedField, obj *InboxItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_InboxItem_sourceContext,
+		func(ctx context.Context) (any, error) {
+			return obj.SourceContext, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_InboxItem_sourceContext(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "InboxItem",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _InboxItem_createdAt(ctx context.Context, field graphql.CollectedField, obj *InboxItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_InboxItem_createdAt,
+		func(ctx context.Context) (any, error) {
+			return obj.CreatedAt, nil
+		},
+		nil,
+		ec.marshalNTime2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTime,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_InboxItem_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "InboxItem",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Meaning_id(ctx context.Context, field graphql.CollectedField, obj *Meaning) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1049,9 +1476,9 @@ func (ec *executionContext) _Meaning_translationRu(ctx context.Context, field gr
 			return obj.TranslationRu, nil
 		},
 		nil,
-		ec.marshalNString2string,
+		ec.marshalOString2ᚕstringᚄ,
 		true,
-		true,
+		false,
 	)
 }
 
@@ -1287,6 +1714,143 @@ func (ec *executionContext) fieldContext_Meaning_tags(_ context.Context, field g
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_addToInbox(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_addToInbox,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().AddToInbox(ctx, fc.Args["text"].(string), fc.Args["sourceContext"].(*string))
+		},
+		nil,
+		ec.marshalNInboxItem2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐInboxItem,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_addToInbox(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_InboxItem_id(ctx, field)
+			case "text":
+				return ec.fieldContext_InboxItem_text(ctx, field)
+			case "sourceContext":
+				return ec.fieldContext_InboxItem_sourceContext(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_InboxItem_createdAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type InboxItem", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_addToInbox_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_deleteInboxItem(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_deleteInboxItem,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().DeleteInboxItem(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_deleteInboxItem(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_deleteInboxItem_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_convertInboxItem(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_convertInboxItem,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().ConvertInboxItem(ctx, fc.Args["inboxId"].(string), fc.Args["input"].(CreateWordInput))
+		},
+		nil,
+		ec.marshalNCreateWordPayload2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐCreateWordPayload,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_convertInboxItem(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "word":
+				return ec.fieldContext_CreateWordPayload_word(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type CreateWordPayload", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_convertInboxItem_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_createWord(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1295,10 +1859,10 @@ func (ec *executionContext) _Mutation_createWord(ctx context.Context, field grap
 		ec.fieldContext_Mutation_createWord,
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.resolvers.Mutation().CreateWord(ctx, fc.Args["input"].(AddWordInput))
+			return ec.resolvers.Mutation().CreateWord(ctx, fc.Args["input"].(CreateWordInput))
 		},
 		nil,
-		ec.marshalNWord2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWord,
+		ec.marshalNCreateWordPayload2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐCreateWordPayload,
 		true,
 		true,
 	)
@@ -1312,20 +1876,10 @@ func (ec *executionContext) fieldContext_Mutation_createWord(ctx context.Context
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "id":
-				return ec.fieldContext_Word_id(ctx, field)
-			case "text":
-				return ec.fieldContext_Word_text(ctx, field)
-			case "transcription":
-				return ec.fieldContext_Word_transcription(ctx, field)
-			case "audioUrl":
-				return ec.fieldContext_Word_audioUrl(ctx, field)
-			case "frequencyRank":
-				return ec.fieldContext_Word_frequencyRank(ctx, field)
-			case "meanings":
-				return ec.fieldContext_Word_meanings(ctx, field)
+			case "word":
+				return ec.fieldContext_CreateWordPayload_word(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type Word", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type CreateWordPayload", field.Name)
 		},
 	}
 	defer func() {
@@ -1350,10 +1904,10 @@ func (ec *executionContext) _Mutation_updateWord(ctx context.Context, field grap
 		ec.fieldContext_Mutation_updateWord,
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.resolvers.Mutation().UpdateWord(ctx, fc.Args["id"].(string), fc.Args["input"].(AddWordInput))
+			return ec.resolvers.Mutation().UpdateWord(ctx, fc.Args["id"].(string), fc.Args["input"].(CreateWordInput))
 		},
 		nil,
-		ec.marshalNWord2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWord,
+		ec.marshalNUpdateWordPayload2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐUpdateWordPayload,
 		true,
 		true,
 	)
@@ -1367,20 +1921,10 @@ func (ec *executionContext) fieldContext_Mutation_updateWord(ctx context.Context
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "id":
-				return ec.fieldContext_Word_id(ctx, field)
-			case "text":
-				return ec.fieldContext_Word_text(ctx, field)
-			case "transcription":
-				return ec.fieldContext_Word_transcription(ctx, field)
-			case "audioUrl":
-				return ec.fieldContext_Word_audioUrl(ctx, field)
-			case "frequencyRank":
-				return ec.fieldContext_Word_frequencyRank(ctx, field)
-			case "meanings":
-				return ec.fieldContext_Word_meanings(ctx, field)
+			case "word":
+				return ec.fieldContext_UpdateWordPayload_word(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type Word", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type UpdateWordPayload", field.Name)
 		},
 	}
 	defer func() {
@@ -1391,6 +1935,47 @@ func (ec *executionContext) fieldContext_Mutation_updateWord(ctx context.Context
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_updateWord_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_deleteWord(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_deleteWord,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().DeleteWord(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_deleteWord(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_deleteWord_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -1464,15 +2049,14 @@ func (ec *executionContext) fieldContext_Mutation_reviewMeaning(ctx context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Mutation_deleteWord(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _PageInfo_hasNextPage(ctx context.Context, field graphql.CollectedField, obj *PageInfo) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
-		ec.fieldContext_Mutation_deleteWord,
+		ec.fieldContext_PageInfo_hasNextPage,
 		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.resolvers.Mutation().DeleteWord(ctx, fc.Args["id"].(string))
+			return obj.HasNextPage, nil
 		},
 		nil,
 		ec.marshalNBoolean2bool,
@@ -1481,26 +2065,44 @@ func (ec *executionContext) _Mutation_deleteWord(ctx context.Context, field grap
 	)
 }
 
-func (ec *executionContext) fieldContext_Mutation_deleteWord(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_PageInfo_hasNextPage(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
-		Object:     "Mutation",
+		Object:     "PageInfo",
 		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
+		IsMethod:   false,
+		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Boolean does not have child fields")
 		},
 	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_deleteWord_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
+	return fc, nil
+}
+
+func (ec *executionContext) _PageInfo_endCursor(ctx context.Context, field graphql.CollectedField, obj *PageInfo) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_PageInfo_endCursor,
+		func(ctx context.Context) (any, error) {
+			return obj.EndCursor, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_PageInfo_endCursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "PageInfo",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
 	}
 	return fc, nil
 }
@@ -1513,10 +2115,10 @@ func (ec *executionContext) _Query_words(ctx context.Context, field graphql.Coll
 		ec.fieldContext_Query_words,
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.resolvers.Query().Words(ctx, fc.Args["filter"].(*WordFilter), fc.Args["limit"].(*int), fc.Args["offset"].(*int))
+			return ec.resolvers.Query().Words(ctx, fc.Args["filter"].(*WordFilter), fc.Args["first"].(*int), fc.Args["after"].(*string))
 		},
 		nil,
-		ec.marshalNWord2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWordᚄ,
+		ec.marshalNWordConnection2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWordConnection,
 		true,
 		true,
 	)
@@ -1530,20 +2132,14 @@ func (ec *executionContext) fieldContext_Query_words(ctx context.Context, field 
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "id":
-				return ec.fieldContext_Word_id(ctx, field)
-			case "text":
-				return ec.fieldContext_Word_text(ctx, field)
-			case "transcription":
-				return ec.fieldContext_Word_transcription(ctx, field)
-			case "audioUrl":
-				return ec.fieldContext_Word_audioUrl(ctx, field)
-			case "frequencyRank":
-				return ec.fieldContext_Word_frequencyRank(ctx, field)
-			case "meanings":
-				return ec.fieldContext_Word_meanings(ctx, field)
+			case "edges":
+				return ec.fieldContext_WordConnection_edges(ctx, field)
+			case "pageInfo":
+				return ec.fieldContext_WordConnection_pageInfo(ctx, field)
+			case "totalCount":
+				return ec.fieldContext_WordConnection_totalCount(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type Word", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type WordConnection", field.Name)
 		},
 	}
 	defer func() {
@@ -1609,6 +2205,98 @@ func (ec *executionContext) fieldContext_Query_word(ctx context.Context, field g
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_word_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_inboxItems(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_inboxItems,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Query().InboxItems(ctx)
+		},
+		nil,
+		ec.marshalNInboxItem2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐInboxItemᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_inboxItems(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_InboxItem_id(ctx, field)
+			case "text":
+				return ec.fieldContext_InboxItem_text(ctx, field)
+			case "sourceContext":
+				return ec.fieldContext_InboxItem_sourceContext(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_InboxItem_createdAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type InboxItem", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_suggest(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_suggest,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().Suggest(ctx, fc.Args["query"].(string))
+		},
+		nil,
+		ec.marshalNSuggestion2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐSuggestionᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_suggest(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "text":
+				return ec.fieldContext_Suggestion_text(ctx, field)
+			case "transcription":
+				return ec.fieldContext_Suggestion_transcription(ctx, field)
+			case "translations":
+				return ec.fieldContext_Suggestion_translations(ctx, field)
+			case "origin":
+				return ec.fieldContext_Suggestion_origin(ctx, field)
+			case "existingWordId":
+				return ec.fieldContext_Suggestion_existingWordId(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Suggestion", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_suggest_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -1829,6 +2517,151 @@ func (ec *executionContext) fieldContext_Query___schema(_ context.Context, field
 	return fc, nil
 }
 
+func (ec *executionContext) _Suggestion_text(ctx context.Context, field graphql.CollectedField, obj *Suggestion) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Suggestion_text,
+		func(ctx context.Context) (any, error) {
+			return obj.Text, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Suggestion_text(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Suggestion",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Suggestion_transcription(ctx context.Context, field graphql.CollectedField, obj *Suggestion) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Suggestion_transcription,
+		func(ctx context.Context) (any, error) {
+			return obj.Transcription, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Suggestion_transcription(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Suggestion",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Suggestion_translations(ctx context.Context, field graphql.CollectedField, obj *Suggestion) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Suggestion_translations,
+		func(ctx context.Context) (any, error) {
+			return obj.Translations, nil
+		},
+		nil,
+		ec.marshalNString2ᚕstringᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Suggestion_translations(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Suggestion",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Suggestion_origin(ctx context.Context, field graphql.CollectedField, obj *Suggestion) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Suggestion_origin,
+		func(ctx context.Context) (any, error) {
+			return obj.Origin, nil
+		},
+		nil,
+		ec.marshalNSuggestionOrigin2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐSuggestionOrigin,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Suggestion_origin(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Suggestion",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type SuggestionOrigin does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Suggestion_existingWordId(ctx context.Context, field graphql.CollectedField, obj *Suggestion) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Suggestion_existingWordId,
+		func(ctx context.Context) (any, error) {
+			return obj.ExistingWordID, nil
+		},
+		nil,
+		ec.marshalOID2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Suggestion_existingWordId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Suggestion",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Tag_id(ctx context.Context, field graphql.CollectedField, obj *Tag) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1882,6 +2715,49 @@ func (ec *executionContext) fieldContext_Tag_name(_ context.Context, field graph
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _UpdateWordPayload_word(ctx context.Context, field graphql.CollectedField, obj *UpdateWordPayload) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_UpdateWordPayload_word,
+		func(ctx context.Context) (any, error) {
+			return obj.Word, nil
+		},
+		nil,
+		ec.marshalNWord2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWord,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_UpdateWordPayload_word(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "UpdateWordPayload",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Word_id(ctx, field)
+			case "text":
+				return ec.fieldContext_Word_text(ctx, field)
+			case "transcription":
+				return ec.fieldContext_Word_transcription(ctx, field)
+			case "audioUrl":
+				return ec.fieldContext_Word_audioUrl(ctx, field)
+			case "frequencyRank":
+				return ec.fieldContext_Word_frequencyRank(ctx, field)
+			case "meanings":
+				return ec.fieldContext_Word_meanings(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Word", field.Name)
 		},
 	}
 	return fc, nil
@@ -2082,6 +2958,177 @@ func (ec *executionContext) fieldContext_Word_meanings(_ context.Context, field 
 				return ec.fieldContext_Meaning_tags(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Meaning", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _WordConnection_edges(ctx context.Context, field graphql.CollectedField, obj *WordConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_WordConnection_edges,
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		ec.marshalNWordEdge2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWordEdgeᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_WordConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "WordConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "cursor":
+				return ec.fieldContext_WordEdge_cursor(ctx, field)
+			case "node":
+				return ec.fieldContext_WordEdge_node(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type WordEdge", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _WordConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *WordConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_WordConnection_pageInfo,
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		ec.marshalNPageInfo2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐPageInfo,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_WordConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "WordConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "hasNextPage":
+				return ec.fieldContext_PageInfo_hasNextPage(ctx, field)
+			case "endCursor":
+				return ec.fieldContext_PageInfo_endCursor(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type PageInfo", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _WordConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *WordConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_WordConnection_totalCount,
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_WordConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "WordConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _WordEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *WordEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_WordEdge_cursor,
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_WordEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "WordEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _WordEdge_node(ctx context.Context, field graphql.CollectedField, obj *WordEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_WordEdge_node,
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		ec.marshalNWord2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWord,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_WordEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "WordEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Word_id(ctx, field)
+			case "text":
+				return ec.fieldContext_Word_text(ctx, field)
+			case "transcription":
+				return ec.fieldContext_Word_transcription(ctx, field)
+			case "audioUrl":
+				return ec.fieldContext_Word_audioUrl(ctx, field)
+			case "frequencyRank":
+				return ec.fieldContext_Word_frequencyRank(ctx, field)
+			case "meanings":
+				return ec.fieldContext_Word_meanings(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Word", field.Name)
 		},
 	}
 	return fc, nil
@@ -3533,14 +4580,14 @@ func (ec *executionContext) fieldContext___Type_isOneOf(_ context.Context, field
 
 // region    **************************** input.gotpl *****************************
 
-func (ec *executionContext) unmarshalInputAddWordInput(ctx context.Context, obj any) (AddWordInput, error) {
-	var it AddWordInput
+func (ec *executionContext) unmarshalInputCreateWordInput(ctx context.Context, obj any) (CreateWordInput, error) {
+	var it CreateWordInput
 	asMap := map[string]any{}
 	for k, v := range obj.(map[string]any) {
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"text", "transcription", "audioUrl", "meanings"}
+	fieldsInOrder := [...]string{"text", "transcription", "audioUrl", "sourceContext", "meanings"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -3568,6 +4615,13 @@ func (ec *executionContext) unmarshalInputAddWordInput(ctx context.Context, obj 
 				return it, err
 			}
 			it.AudioURL = data
+		case "sourceContext":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceContext"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceContext = data
 		case "meanings":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("meanings"))
 			data, err := ec.unmarshalOMeaningInput2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐMeaningInputᚄ(ctx, v)
@@ -3733,6 +4787,45 @@ func (ec *executionContext) unmarshalInputWordFilter(ctx context.Context, obj an
 
 // region    **************************** object.gotpl ****************************
 
+var createWordPayloadImplementors = []string{"CreateWordPayload"}
+
+func (ec *executionContext) _CreateWordPayload(ctx context.Context, sel ast.SelectionSet, obj *CreateWordPayload) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createWordPayloadImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreateWordPayload")
+		case "word":
+			out.Values[i] = ec._CreateWordPayload_word(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var dashboardStatsImplementors = []string{"DashboardStats"}
 
 func (ec *executionContext) _DashboardStats(ctx context.Context, sel ast.SelectionSet, obj *DashboardStats) graphql.Marshaler {
@@ -3835,6 +4928,57 @@ func (ec *executionContext) _Example(ctx context.Context, sel ast.SelectionSet, 
 	return out
 }
 
+var inboxItemImplementors = []string{"InboxItem"}
+
+func (ec *executionContext) _InboxItem(ctx context.Context, sel ast.SelectionSet, obj *InboxItem) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, inboxItemImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("InboxItem")
+		case "id":
+			out.Values[i] = ec._InboxItem_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "text":
+			out.Values[i] = ec._InboxItem_text(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "sourceContext":
+			out.Values[i] = ec._InboxItem_sourceContext(ctx, field, obj)
+		case "createdAt":
+			out.Values[i] = ec._InboxItem_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var meaningImplementors = []string{"Meaning"}
 
 func (ec *executionContext) _Meaning(ctx context.Context, sel ast.SelectionSet, obj *Meaning) graphql.Marshaler {
@@ -3865,9 +5009,6 @@ func (ec *executionContext) _Meaning(ctx context.Context, sel ast.SelectionSet, 
 			out.Values[i] = ec._Meaning_definitionEn(ctx, field, obj)
 		case "translationRu":
 			out.Values[i] = ec._Meaning_translationRu(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				atomic.AddUint32(&out.Invalids, 1)
-			}
 		case "cefrLevel":
 			out.Values[i] = ec._Meaning_cefrLevel(ctx, field, obj)
 		case "imageUrl":
@@ -3992,6 +5133,27 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Mutation")
+		case "addToInbox":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_addToInbox(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "deleteInboxItem":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_deleteInboxItem(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "convertInboxItem":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_convertInboxItem(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "createWord":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_createWord(ctx, field)
@@ -4006,13 +5168,6 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
-		case "reviewMeaning":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_reviewMeaning(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
 		case "deleteWord":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_deleteWord(ctx, field)
@@ -4020,6 +5175,54 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "reviewMeaning":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_reviewMeaning(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var pageInfoImplementors = []string{"PageInfo"}
+
+func (ec *executionContext) _PageInfo(ctx context.Context, sel ast.SelectionSet, obj *PageInfo) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, pageInfoImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("PageInfo")
+		case "hasNextPage":
+			out.Values[i] = ec._PageInfo_hasNextPage(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "endCursor":
+			out.Values[i] = ec._PageInfo_endCursor(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -4094,6 +5297,50 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_word(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "inboxItems":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_inboxItems(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "suggest":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_suggest(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
 				return res
 			}
 
@@ -4178,6 +5425,59 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 	return out
 }
 
+var suggestionImplementors = []string{"Suggestion"}
+
+func (ec *executionContext) _Suggestion(ctx context.Context, sel ast.SelectionSet, obj *Suggestion) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, suggestionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Suggestion")
+		case "text":
+			out.Values[i] = ec._Suggestion_text(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "transcription":
+			out.Values[i] = ec._Suggestion_transcription(ctx, field, obj)
+		case "translations":
+			out.Values[i] = ec._Suggestion_translations(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "origin":
+			out.Values[i] = ec._Suggestion_origin(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "existingWordId":
+			out.Values[i] = ec._Suggestion_existingWordId(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var tagImplementors = []string{"Tag"}
 
 func (ec *executionContext) _Tag(ctx context.Context, sel ast.SelectionSet, obj *Tag) graphql.Marshaler {
@@ -4196,6 +5496,45 @@ func (ec *executionContext) _Tag(ctx context.Context, sel ast.SelectionSet, obj 
 			}
 		case "name":
 			out.Values[i] = ec._Tag_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var updateWordPayloadImplementors = []string{"UpdateWordPayload"}
+
+func (ec *executionContext) _UpdateWordPayload(ctx context.Context, sel ast.SelectionSet, obj *UpdateWordPayload) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, updateWordPayloadImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("UpdateWordPayload")
+		case "word":
+			out.Values[i] = ec._UpdateWordPayload_word(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -4282,6 +5621,99 @@ func (ec *executionContext) _Word(ctx context.Context, sel ast.SelectionSet, obj
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var wordConnectionImplementors = []string{"WordConnection"}
+
+func (ec *executionContext) _WordConnection(ctx context.Context, sel ast.SelectionSet, obj *WordConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, wordConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("WordConnection")
+		case "edges":
+			out.Values[i] = ec._WordConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._WordConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._WordConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var wordEdgeImplementors = []string{"WordEdge"}
+
+func (ec *executionContext) _WordEdge(ctx context.Context, sel ast.SelectionSet, obj *WordEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, wordEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("WordEdge")
+		case "cursor":
+			out.Values[i] = ec._WordEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "node":
+			out.Values[i] = ec._WordEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -4640,11 +6072,6 @@ func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, o
 
 // region    ***************************** type.gotpl *****************************
 
-func (ec *executionContext) unmarshalNAddWordInput2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐAddWordInput(ctx context.Context, v any) (AddWordInput, error) {
-	res, err := ec.unmarshalInputAddWordInput(ctx, v)
-	return res, graphql.ErrorOnPath(ctx, err)
-}
-
 func (ec *executionContext) unmarshalNBoolean2bool(ctx context.Context, v any) (bool, error) {
 	res, err := graphql.UnmarshalBoolean(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -4659,6 +6086,25 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNCreateWordInput2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐCreateWordInput(ctx context.Context, v any) (CreateWordInput, error) {
+	res, err := ec.unmarshalInputCreateWordInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNCreateWordPayload2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐCreateWordPayload(ctx context.Context, sel ast.SelectionSet, v CreateWordPayload) graphql.Marshaler {
+	return ec._CreateWordPayload(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNCreateWordPayload2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐCreateWordPayload(ctx context.Context, sel ast.SelectionSet, v *CreateWordPayload) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._CreateWordPayload(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNDashboardStats2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐDashboardStats(ctx context.Context, sel ast.SelectionSet, v DashboardStats) graphql.Marshaler {
@@ -4704,6 +6150,64 @@ func (ec *executionContext) marshalNID2string(ctx context.Context, sel ast.Selec
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) marshalNInboxItem2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐInboxItem(ctx context.Context, sel ast.SelectionSet, v InboxItem) graphql.Marshaler {
+	return ec._InboxItem(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNInboxItem2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐInboxItemᚄ(ctx context.Context, sel ast.SelectionSet, v []*InboxItem) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNInboxItem2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐInboxItem(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNInboxItem2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐInboxItem(ctx context.Context, sel ast.SelectionSet, v *InboxItem) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._InboxItem(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNInt2int(ctx context.Context, v any) (int, error) {
@@ -4795,6 +6299,16 @@ func (ec *executionContext) unmarshalNMeaningInput2ᚖgithubᚗcomᚋheartmarsha
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
+func (ec *executionContext) marshalNPageInfo2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐPageInfo(ctx context.Context, sel ast.SelectionSet, v *PageInfo) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._PageInfo(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNPartOfSpeech2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐPartOfSpeech(ctx context.Context, v any) (PartOfSpeech, error) {
 	var res PartOfSpeech
 	err := res.UnmarshalGQL(v)
@@ -4821,21 +6335,37 @@ func (ec *executionContext) marshalNString2string(ctx context.Context, sel ast.S
 	return res
 }
 
-func (ec *executionContext) marshalNTag2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTag(ctx context.Context, sel ast.SelectionSet, v *Tag) graphql.Marshaler {
-	if v == nil {
-		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+func (ec *executionContext) unmarshalNString2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]string, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNString2string(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
 		}
-		return graphql.Null
 	}
-	return ec._Tag(ctx, sel, v)
+	return res, nil
 }
 
-func (ec *executionContext) marshalNWord2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWord(ctx context.Context, sel ast.SelectionSet, v Word) graphql.Marshaler {
-	return ec._Word(ctx, sel, &v)
+func (ec *executionContext) marshalNString2ᚕstringᚄ(ctx context.Context, sel ast.SelectionSet, v []string) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNString2string(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
-func (ec *executionContext) marshalNWord2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWordᚄ(ctx context.Context, sel ast.SelectionSet, v []*Word) graphql.Marshaler {
+func (ec *executionContext) marshalNSuggestion2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐSuggestionᚄ(ctx context.Context, sel ast.SelectionSet, v []*Suggestion) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -4859,7 +6389,7 @@ func (ec *executionContext) marshalNWord2ᚕᚖgithubᚗcomᚋheartmarshallᚋmy
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNWord2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWord(ctx, sel, v[i])
+			ret[i] = ec.marshalNSuggestion2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐSuggestion(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -4879,6 +6409,66 @@ func (ec *executionContext) marshalNWord2ᚕᚖgithubᚗcomᚋheartmarshallᚋmy
 	return ret
 }
 
+func (ec *executionContext) marshalNSuggestion2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐSuggestion(ctx context.Context, sel ast.SelectionSet, v *Suggestion) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Suggestion(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNSuggestionOrigin2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐSuggestionOrigin(ctx context.Context, v any) (SuggestionOrigin, error) {
+	var res SuggestionOrigin
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNSuggestionOrigin2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐSuggestionOrigin(ctx context.Context, sel ast.SelectionSet, v SuggestionOrigin) graphql.Marshaler {
+	return v
+}
+
+func (ec *executionContext) marshalNTag2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTag(ctx context.Context, sel ast.SelectionSet, v *Tag) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Tag(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNTime2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTime(ctx context.Context, v any) (Time, error) {
+	res, err := UnmarshalTime(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNTime2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTime(ctx context.Context, sel ast.SelectionSet, v Time) graphql.Marshaler {
+	_ = sel
+	res := MarshalTime(v)
+	if res == graphql.Null {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+	}
+	return res
+}
+
+func (ec *executionContext) marshalNUpdateWordPayload2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐUpdateWordPayload(ctx context.Context, sel ast.SelectionSet, v UpdateWordPayload) graphql.Marshaler {
+	return ec._UpdateWordPayload(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNUpdateWordPayload2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐUpdateWordPayload(ctx context.Context, sel ast.SelectionSet, v *UpdateWordPayload) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._UpdateWordPayload(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNWord2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWord(ctx context.Context, sel ast.SelectionSet, v *Word) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -4887,6 +6477,74 @@ func (ec *executionContext) marshalNWord2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑ
 		return graphql.Null
 	}
 	return ec._Word(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNWordConnection2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWordConnection(ctx context.Context, sel ast.SelectionSet, v WordConnection) graphql.Marshaler {
+	return ec._WordConnection(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNWordConnection2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWordConnection(ctx context.Context, sel ast.SelectionSet, v *WordConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._WordConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNWordEdge2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWordEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*WordEdge) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNWordEdge2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWordEdge(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNWordEdge2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWordEdge(ctx context.Context, sel ast.SelectionSet, v *WordEdge) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._WordEdge(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalN__Directive2githubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐDirective(ctx context.Context, sel ast.SelectionSet, v introspection.Directive) graphql.Marshaler {
@@ -5251,6 +6909,24 @@ func (ec *executionContext) marshalOExampleSource2ᚖgithubᚗcomᚋheartmarshal
 		return graphql.Null
 	}
 	return v
+}
+
+func (ec *executionContext) unmarshalOID2ᚖstring(ctx context.Context, v any) (*string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalID(v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOID2ᚖstring(ctx context.Context, sel ast.SelectionSet, v *string) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	_ = sel
+	_ = ctx
+	res := graphql.MarshalID(*v)
+	return res
 }
 
 func (ec *executionContext) unmarshalOInt2ᚖint(ctx context.Context, v any) (*int, error) {
