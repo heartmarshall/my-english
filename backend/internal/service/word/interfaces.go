@@ -63,6 +63,11 @@ type DictionaryRepository interface {
 	GetMeaningsByWordID(ctx context.Context, wordID int64) ([]model.DictionaryMeaning, error)
 	GetTranslationsByMeaningID(ctx context.Context, meaningID int64) ([]model.DictionaryTranslation, error)
 	GetTranslationsByMeaningIDs(ctx context.Context, meaningIDs []int64) ([]model.DictionaryTranslation, error)
+	GetFormsByWordID(ctx context.Context, wordID int64) ([]model.DictionaryWordForm, error)
+	GetWordByFormText(ctx context.Context, formText string) (*model.DictionaryWord, error)
+	GetRelationsByMeaningID(ctx context.Context, meaningID int64) ([]model.DictionarySynonymAntonym, error)
+	GetSynonymsByMeaningID(ctx context.Context, meaningID int64) ([]model.DictionarySynonymAntonym, error)
+	GetAntonymsByMeaningID(ctx context.Context, meaningID int64) ([]model.DictionarySynonymAntonym, error)
 }
 
 // MeaningTagRepository определяет интерфейс для связи meaning-tag.

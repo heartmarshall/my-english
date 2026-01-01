@@ -16,11 +16,20 @@ type Word struct {
 	CreatedAt     time.Time `db:"created_at"`
 }
 
+// SortOrder представляет тип сортировки
+type SortOrder string
+
+const (
+	SortOrderAlphabetical SortOrder = "alphabetical"
+	SortOrderCreatedAt    SortOrder = "created_at"
+)
+
 // WordFilter содержит параметры фильтрации при поиске слов
 type WordFilter struct {
 	Search *string
 	Status *LearningStatus
 	Tags   []string
+	SortBy *SortOrder
 }
 
 // LearningStatus представляет статус изучения слова
@@ -201,10 +210,10 @@ type MeaningTag struct {
 
 // InboxItem представляет элемент корзины входящих слов
 type InboxItem struct {
-	ID           int64     `db:"id"`
-	Text         string    `db:"text"`
+	ID            int64     `db:"id"`
+	Text          string    `db:"text"`
 	SourceContext *string   `db:"source_context"`
-	CreatedAt    time.Time `db:"created_at"`
+	CreatedAt     time.Time `db:"created_at"`
 }
 
 // Translation представляет перевод значения слова
@@ -222,23 +231,23 @@ type DictionaryWord struct {
 	Transcription *string   `db:"transcription"`
 	AudioURL      *string   `db:"audio_url"`
 	FrequencyRank *int      `db:"frequency_rank"`
-	Source        string    `db:"source"`        // Источник: 'free_dictionary', 'oxford', 'custom' и т.д.
-	SourceID      *string   `db:"source_id"`    // ID слова в источнике
+	Source        string    `db:"source"`    // Источник: 'free_dictionary', 'oxford', 'custom' и т.д.
+	SourceID      *string   `db:"source_id"` // ID слова в источнике
 	CreatedAt     time.Time `db:"created_at"`
 	UpdatedAt     time.Time `db:"updated_at"`
 }
 
 // DictionaryMeaning представляет значение слова из внутреннего словаря
 type DictionaryMeaning struct {
-	ID              int64        `db:"id"`
+	ID               int64        `db:"id"`
 	DictionaryWordID int64        `db:"dictionary_word_id"`
-	PartOfSpeech    PartOfSpeech `db:"part_of_speech"`
-	DefinitionEn    *string      `db:"definition_en"`
-	CefrLevel       *string      `db:"cefr_level"`
-	ImageURL        *string      `db:"image_url"`
-	OrderIndex      int          `db:"order_index"`
-	CreatedAt       time.Time    `db:"created_at"`
-	UpdatedAt       time.Time    `db:"updated_at"`
+	PartOfSpeech     PartOfSpeech `db:"part_of_speech"`
+	DefinitionEn     *string      `db:"definition_en"`
+	CefrLevel        *string      `db:"cefr_level"`
+	ImageURL         *string      `db:"image_url"`
+	OrderIndex       int          `db:"order_index"`
+	CreatedAt        time.Time    `db:"created_at"`
+	UpdatedAt        time.Time    `db:"updated_at"`
 }
 
 // DictionaryTranslation представляет перевод значения из внутреннего словаря
@@ -247,4 +256,64 @@ type DictionaryTranslation struct {
 	DictionaryMeaningID int64     `db:"dictionary_meaning_id"`
 	TranslationRu       string    `db:"translation_ru"`
 	CreatedAt           time.Time `db:"created_at"`
+}
+
+// DictionaryWordForm представляет форму слова из внутреннего словаря
+// Формы слов: времена глаголов (go, went, gone), множественное число существительных (mouse, mice),
+// степени сравнения прилагательных (big, bigger, biggest) и т.д.
+type DictionaryWordForm struct {
+	ID               int64     `db:"id"`
+	DictionaryWordID int64     `db:"dictionary_word_id"`
+	FormText         string    `db:"form_text"`
+	FormType         *string   `db:"form_type"` // Тип формы: 'past_tense', 'past_participle', 'plural', 'comparative', 'superlative', 'third_person_singular', 'present_participle', 'gerund' и т.д.
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
+}
+
+// RelationType представляет тип связи между значениями словаря
+type RelationType string
+
+const (
+	RelationTypeSynonym RelationType = "synonym"
+	RelationTypeAntonym RelationType = "antonym"
+)
+
+// Value реализует driver.Valuer для RelationType
+func (rt RelationType) Value() (driver.Value, error) {
+	return string(rt), nil
+}
+
+// Scan реализует sql.Scanner для RelationType
+func (rt *RelationType) Scan(value interface{}) error {
+	if value == nil {
+		return fmt.Errorf("RelationType cannot be nil")
+	}
+	switch v := value.(type) {
+	case string:
+		*rt = RelationType(v)
+	case []byte:
+		*rt = RelationType(v)
+	default:
+		return fmt.Errorf("cannot scan %T into RelationType", value)
+	}
+	return nil
+}
+
+// IsValid проверяет, является ли тип связи валидным значением.
+func (rt RelationType) IsValid() bool {
+	switch rt {
+	case RelationTypeSynonym, RelationTypeAntonym:
+		return true
+	}
+	return false
+}
+
+// DictionarySynonymAntonym представляет связь между значениями словаря (синонимы/антонимы)
+type DictionarySynonymAntonym struct {
+	ID           int64        `db:"id"`
+	MeaningID1   int64        `db:"meaning_id_1"`
+	MeaningID2   int64        `db:"meaning_id_2"`
+	RelationType RelationType `db:"relation_type"`
+	CreatedAt    time.Time    `db:"created_at"`
+	UpdatedAt    time.Time    `db:"updated_at"`
 }

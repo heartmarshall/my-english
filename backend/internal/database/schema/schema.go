@@ -420,3 +420,75 @@ func (t DictionaryTranslationTable) All() []string {
 func (t DictionaryTranslationTable) InsertColumns() []string {
 	return []string{"dictionary_meaning_id", "translation_ru", "created_at"}
 }
+
+// DictionaryWordFormTable определяет схему таблицы dictionary_word_forms
+type DictionaryWordFormTable struct {
+	Name            Table
+	ID              Column
+	DictionaryWordID Column
+	FormText        Column
+	FormType        Column
+	CreatedAt       Column
+	UpdatedAt       Column
+}
+
+var DictionaryWordForms = DictionaryWordFormTable{
+	Name:            "dictionary_word_forms",
+	ID:              "dictionary_word_forms.id",
+	DictionaryWordID: "dictionary_word_forms.dictionary_word_id",
+	FormText:        "dictionary_word_forms.form_text",
+	FormType:        "dictionary_word_forms.form_type",
+	CreatedAt:       "dictionary_word_forms.created_at",
+	UpdatedAt:       "dictionary_word_forms.updated_at",
+}
+
+func (t DictionaryWordFormTable) All() []string {
+	return []string{
+		string(t.ID),
+		string(t.DictionaryWordID),
+		string(t.FormText),
+		string(t.FormType),
+		string(t.CreatedAt),
+		string(t.UpdatedAt),
+	}
+}
+
+func (t DictionaryWordFormTable) InsertColumns() []string {
+	return []string{"dictionary_word_id", "form_text", "form_type", "created_at", "updated_at"}
+}
+
+// DictionarySynonymAntonymTable определяет схему таблицы dictionary_synonyms_antonyms
+type DictionarySynonymAntonymTable struct {
+	Name         Table
+	ID           Column
+	MeaningID1   Column
+	MeaningID2   Column
+	RelationType Column
+	CreatedAt    Column
+	UpdatedAt    Column
+}
+
+var DictionarySynonymsAntonyms = DictionarySynonymAntonymTable{
+	Name:         "dictionary_synonyms_antonyms",
+	ID:           "dictionary_synonyms_antonyms.id",
+	MeaningID1:   "dictionary_synonyms_antonyms.meaning_id_1",
+	MeaningID2:   "dictionary_synonyms_antonyms.meaning_id_2",
+	RelationType: "dictionary_synonyms_antonyms.relation_type",
+	CreatedAt:    "dictionary_synonyms_antonyms.created_at",
+	UpdatedAt:    "dictionary_synonyms_antonyms.updated_at",
+}
+
+func (t DictionarySynonymAntonymTable) All() []string {
+	return []string{
+		string(t.ID),
+		string(t.MeaningID1),
+		string(t.MeaningID2),
+		string(t.RelationType),
+		string(t.CreatedAt),
+		string(t.UpdatedAt),
+	}
+}
+
+func (t DictionarySynonymAntonymTable) InsertColumns() []string {
+	return []string{"meaning_id_1", "meaning_id_2", "relation_type", "created_at", "updated_at"}
+}
