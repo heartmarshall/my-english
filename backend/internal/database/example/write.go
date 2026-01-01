@@ -15,7 +15,7 @@ func (r *Repo) Create(ctx context.Context, example *model.Example) error {
 		return database.ErrInvalidInput
 	}
 
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Insert(schema.Examples.Name.String()).
 		Columns(
 			schema.Examples.MeaningID.Bare(),
@@ -29,17 +29,14 @@ func (r *Repo) Create(ctx context.Context, example *model.Example) error {
 			example.SentenceRu,
 			example.SourceName,
 		).
-		Suffix("RETURNING " + schema.Examples.ID.Bare()).
-		ToSql()
+		Suffix("RETURNING " + schema.Examples.ID.Bare())
+
+	id, err := database.ExecInsertWithReturn[int64](ctx, r.q, builder)
 	if err != nil {
 		return err
 	}
 
-	err = r.q.QueryRow(ctx, query, args...).Scan(&example.ID)
-	if err != nil {
-		return database.WrapDBError(err)
-	}
-
+	example.ID = id
 	return nil
 }
 
@@ -104,23 +101,19 @@ func (r *Repo) Update(ctx context.Context, example *model.Example) error {
 		return database.ErrInvalidInput
 	}
 
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Update(schema.Examples.Name.String()).
 		Set(schema.Examples.SentenceEn.Bare(), example.SentenceEn).
 		Set(schema.Examples.SentenceRu.Bare(), example.SentenceRu).
 		Set(schema.Examples.SourceName.Bare(), example.SourceName).
-		Where(schema.Examples.ID.Eq(example.ID)).
-		ToSql()
+		Where(schema.Examples.ID.Eq(example.ID))
+
+	rowsAffected, err := database.ExecOnly(ctx, r.q, builder)
 	if err != nil {
 		return err
 	}
 
-	commandTag, err := r.q.Exec(ctx, query, args...)
-	if err != nil {
-		return database.WrapDBError(err)
-	}
-
-	if commandTag.RowsAffected() == 0 {
+	if rowsAffected == 0 {
 		return database.ErrNotFound
 	}
 
@@ -129,20 +122,16 @@ func (r *Repo) Update(ctx context.Context, example *model.Example) error {
 
 // Delete удаляет example по ID.
 func (r *Repo) Delete(ctx context.Context, id int64) error {
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Delete(schema.Examples.Name.String()).
-		Where(schema.Examples.ID.Eq(id)).
-		ToSql()
+		Where(schema.Examples.ID.Eq(id))
+
+	rowsAffected, err := database.ExecOnly(ctx, r.q, builder)
 	if err != nil {
 		return err
 	}
 
-	commandTag, err := r.q.Exec(ctx, query, args...)
-	if err != nil {
-		return database.WrapDBError(err)
-	}
-
-	if commandTag.RowsAffected() == 0 {
+	if rowsAffected == 0 {
 		return database.ErrNotFound
 	}
 
@@ -151,18 +140,9 @@ func (r *Repo) Delete(ctx context.Context, id int64) error {
 
 // DeleteByMeaningID удаляет все examples для указанного meaning.
 func (r *Repo) DeleteByMeaningID(ctx context.Context, meaningID int64) (int64, error) {
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Delete(schema.Examples.Name.String()).
-		Where(schema.Examples.MeaningID.Eq(meaningID)).
-		ToSql()
-	if err != nil {
-		return 0, err
-	}
+		Where(schema.Examples.MeaningID.Eq(meaningID))
 
-	commandTag, err := r.q.Exec(ctx, query, args...)
-	if err != nil {
-		return 0, database.WrapDBError(err)
-	}
-
-	return commandTag.RowsAffected(), nil
+	return database.ExecOnly(ctx, r.q, builder)
 }

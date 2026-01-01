@@ -13,36 +13,28 @@ import (
 func (r *Repo) GetDueForReview(ctx context.Context, limit int) ([]model.Meaning, error) {
 	limit = database.NormalizeLimit(limit, database.DefaultSRSLimit)
 
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Select(schema.Meanings.All()...).
 		From(schema.Meanings.Name.String()).
 		Where(schema.Meanings.NextReviewAt.Lt(r.clock.Now())).
 		OrderBy(schema.Meanings.NextReviewAt.Asc()).
-		Limit(uint64(limit)).
-		ToSql()
-	if err != nil {
-		return nil, err
-	}
+		Limit(uint64(limit))
 
-	return database.Select[model.Meaning](ctx, r.q, query, args...)
+	return database.NewQuery[model.Meaning](r.q, builder).List(ctx)
 }
 
 // GetByStatus возвращает meanings с указанным статусом обучения.
 func (r *Repo) GetByStatus(ctx context.Context, status model.LearningStatus, limit int) ([]model.Meaning, error) {
 	limit = database.NormalizeLimit(limit, database.DefaultSRSLimit)
 
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Select(schema.Meanings.All()...).
 		From(schema.Meanings.Name.String()).
 		Where(schema.Meanings.LearningStatus.Eq(status)).
 		OrderBy(schema.Meanings.CreatedAt.Asc()).
-		Limit(uint64(limit)).
-		ToSql()
-	if err != nil {
-		return nil, err
-	}
+		Limit(uint64(limit))
 
-	return database.Select[model.Meaning](ctx, r.q, query, args...)
+	return database.NewQuery[model.Meaning](r.q, builder).List(ctx)
 }
 
 // GetStudyQueue возвращает очередь для изучения.
@@ -51,7 +43,7 @@ func (r *Repo) GetStudyQueue(ctx context.Context, limit int) ([]model.Meaning, e
 
 	now := r.clock.Now()
 
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Select(schema.Meanings.All()...).
 		From(schema.Meanings.Name.String()).
 		Where(squirrel.Or{
@@ -59,13 +51,9 @@ func (r *Repo) GetStudyQueue(ctx context.Context, limit int) ([]model.Meaning, e
 			schema.Meanings.NextReviewAt.Lt(now),
 		}).
 		OrderBy("COALESCE(" + schema.Meanings.NextReviewAt.String() + ", " + schema.Meanings.CreatedAt.String() + ") ASC").
-		Limit(uint64(limit)).
-		ToSql()
-	if err != nil {
-		return nil, err
-	}
+		Limit(uint64(limit))
 
-	return database.Select[model.Meaning](ctx, r.q, query, args...)
+	return database.NewQuery[model.Meaning](r.q, builder).List(ctx)
 }
 
 // GetStats возвращает статистику.
@@ -73,6 +61,8 @@ func (r *Repo) GetStudyQueue(ctx context.Context, limit int) ([]model.Meaning, e
 func (r *Repo) GetStats(ctx context.Context) (*model.Stats, error) {
 	now := r.clock.Now()
 
+	// Для прямого SQL нужно создать обертку, реализующую SQLBuilder
+	// Пока оставим как есть, так как это сложный случай с прямым SQL
 	query := `
 		SELECT 
 			COUNT(DISTINCT ` + schema.Meanings.WordID.String() + `) as total_words,
@@ -82,12 +72,16 @@ func (r *Repo) GetStats(ctx context.Context) (*model.Stats, error) {
 		FROM ` + schema.Meanings.Name.String() + `
 	`
 
-	return database.GetOne[model.Stats](ctx, r.q, query,
+	stats, err := database.GetOne[model.Stats](ctx, r.q, query,
 		model.LearningStatusMastered,
 		model.LearningStatusLearning,
 		now,
 		model.LearningStatusNew,
 	)
+	if err != nil {
+		return nil, err
+	}
+	return stats, nil
 }
 
 // UpdateSRS обновляет только SRS-поля meaning.
@@ -117,17 +111,12 @@ func (r *Repo) UpdateSRS(ctx context.Context, id int64, srs *SRSUpdate) error {
 		qb = qb.Set(schema.Meanings.ReviewCount.Bare(), srs.ReviewCount)
 	}
 
-	query, args, err := qb.ToSql()
+	rowsAffected, err := database.ExecOnly(ctx, r.q, qb)
 	if err != nil {
 		return err
 	}
 
-	commandTag, err := r.q.Exec(ctx, query, args...)
-	if err != nil {
-		return err
-	}
-
-	if commandTag.RowsAffected() == 0 {
+	if rowsAffected == 0 {
 		return database.ErrNotFound
 	}
 

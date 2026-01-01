@@ -11,20 +11,12 @@ import (
 
 // GetByText возвращает слово из словаря по тексту.
 func (r *Repo) GetByText(ctx context.Context, text string) (model.DictionaryWord, error) {
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Select(schema.DictionaryWords.All()...).
 		From(schema.DictionaryWords.Name.String()).
-		Where(schema.DictionaryWords.Text.Eq(text)).
-		ToSql()
-	if err != nil {
-		return model.DictionaryWord{}, err
-	}
+		Where(schema.DictionaryWords.Text.Eq(text))
 
-	word, err := database.GetOne[model.DictionaryWord](ctx, r.q, query, args...)
-	if err != nil {
-		return model.DictionaryWord{}, err
-	}
-	return *word, nil
+	return database.NewQuery[model.DictionaryWord](r.q, builder).One(ctx)
 }
 
 // SearchSimilar использует триграммный поиск для поиска похожих слов в словаре.
@@ -52,6 +44,8 @@ func (r *Repo) SearchSimilar(ctx context.Context, query string, limit int, simil
 
 	args := []interface{}{query, similarityThreshold, limit}
 
+	// Для прямого SQL нужно создать обертку, реализующую SQLBuilder
+	// Пока используем старый метод, так как это прямой SQL
 	words, err := database.Select[model.DictionaryWord](ctx, r.q, sqlQuery, args...)
 	if err != nil {
 		return nil, err
@@ -70,7 +64,7 @@ func (r *Repo) Create(ctx context.Context, word *model.DictionaryWord) error {
 	word.CreatedAt = now
 	word.UpdatedAt = now
 
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Insert(schema.DictionaryWords.Name.String()).
 		Columns(schema.DictionaryWords.InsertColumns()...).
 		Values(
@@ -83,17 +77,14 @@ func (r *Repo) Create(ctx context.Context, word *model.DictionaryWord) error {
 			word.CreatedAt,
 			word.UpdatedAt,
 		).
-		Suffix("ON CONFLICT (text) DO UPDATE SET updated_at = EXCLUDED.updated_at RETURNING " + schema.DictionaryWords.ID.Bare()).
-		ToSql()
+		Suffix("ON CONFLICT (text) DO UPDATE SET updated_at = EXCLUDED.updated_at RETURNING " + schema.DictionaryWords.ID.Bare())
+
+	id, err := database.ExecInsertWithReturn[int64](ctx, r.q, builder)
 	if err != nil {
 		return err
 	}
 
-	err = r.q.QueryRow(ctx, query, args...).Scan(&word.ID)
-	if err != nil {
-		return database.WrapDBError(err)
-	}
+	word.ID = id
 
 	return nil
 }
-

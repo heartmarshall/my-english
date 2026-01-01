@@ -242,9 +242,9 @@ func TestRepo_Count(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		rows := pgxmock.NewRows([]string{"count"}).AddRow(int64(42))
+		rows := pgxmock.NewRows([]string{"count"}).AddRow(42)
 
-		mock.ExpectQuery(`SELECT COUNT\(\*\) FROM words`).
+		mock.ExpectQuery(`SELECT COUNT\(DISTINCT words\.id\) FROM words`).
 			WillReturnRows(rows)
 
 		count, err := repo.Count(ctx, nil)
@@ -349,7 +349,7 @@ func TestRepo_Exists(t *testing.T) {
 	t.Run("exists", func(t *testing.T) {
 		rows := pgxmock.NewRows([]string{"1"}).AddRow(int64(1))
 
-		mock.ExpectQuery(`SELECT 1 FROM words WHERE id = \$1 LIMIT 1`).
+		mock.ExpectQuery(`SELECT 1 FROM words WHERE words\.id = \$1 LIMIT 1`).
 			WithArgs(int64(1)).
 			WillReturnRows(rows)
 
@@ -365,7 +365,7 @@ func TestRepo_Exists(t *testing.T) {
 	})
 
 	t.Run("not exists", func(t *testing.T) {
-		mock.ExpectQuery(`SELECT 1 FROM words WHERE id = \$1 LIMIT 1`).
+		mock.ExpectQuery(`SELECT 1 FROM words WHERE words\.id = \$1 LIMIT 1`).
 			WithArgs(int64(999)).
 			WillReturnError(pgx.ErrNoRows)
 

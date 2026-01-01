@@ -10,32 +10,24 @@ import (
 
 // GetByWordID возвращает все значения для слова из словаря.
 func (r *Repo) GetMeaningsByWordID(ctx context.Context, wordID int64) ([]model.DictionaryMeaning, error) {
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Select(schema.DictionaryMeanings.All()...).
 		From(schema.DictionaryMeanings.Name.String()).
 		Where(schema.DictionaryMeanings.DictionaryWordID.Eq(wordID)).
-		OrderBy(schema.DictionaryMeanings.OrderIndex.Asc(), schema.DictionaryMeanings.CreatedAt.Asc()).
-		ToSql()
-	if err != nil {
-		return nil, err
-	}
+		OrderBy(schema.DictionaryMeanings.OrderIndex.Asc(), schema.DictionaryMeanings.CreatedAt.Asc())
 
-	return database.Select[model.DictionaryMeaning](ctx, r.q, query, args...)
+	return database.NewQuery[model.DictionaryMeaning](r.q, builder).List(ctx)
 }
 
 // GetTranslationsByMeaningID возвращает все переводы для значения из словаря.
 func (r *Repo) GetTranslationsByMeaningID(ctx context.Context, meaningID int64) ([]model.DictionaryTranslation, error) {
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Select(schema.DictionaryTranslations.All()...).
 		From(schema.DictionaryTranslations.Name.String()).
 		Where(schema.DictionaryTranslations.DictionaryMeaningID.Eq(meaningID)).
-		OrderBy(schema.DictionaryTranslations.CreatedAt.Asc()).
-		ToSql()
-	if err != nil {
-		return nil, err
-	}
+		OrderBy(schema.DictionaryTranslations.CreatedAt.Asc())
 
-	return database.Select[model.DictionaryTranslation](ctx, r.q, query, args...)
+	return database.NewQuery[model.DictionaryTranslation](r.q, builder).List(ctx)
 }
 
 // GetTranslationsByMeaningIDs возвращает переводы для нескольких значений (batch loading).
@@ -44,17 +36,13 @@ func (r *Repo) GetTranslationsByMeaningIDs(ctx context.Context, meaningIDs []int
 		return []model.DictionaryTranslation{}, nil
 	}
 
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Select(schema.DictionaryTranslations.All()...).
 		From(schema.DictionaryTranslations.Name.String()).
 		Where(schema.DictionaryTranslations.DictionaryMeaningID.In(meaningIDs)).
-		OrderBy(schema.DictionaryTranslations.DictionaryMeaningID.Asc(), schema.DictionaryTranslations.CreatedAt.Asc()).
-		ToSql()
-	if err != nil {
-		return nil, err
-	}
+		OrderBy(schema.DictionaryTranslations.DictionaryMeaningID.Asc(), schema.DictionaryTranslations.CreatedAt.Asc())
 
-	return database.Select[model.DictionaryTranslation](ctx, r.q, query, args...)
+	return database.NewQuery[model.DictionaryTranslation](r.q, builder).List(ctx)
 }
 
 // CreateMeaning создаёт новое значение в словаре.
@@ -67,7 +55,7 @@ func (r *Repo) CreateMeaning(ctx context.Context, meaning *model.DictionaryMeani
 	meaning.CreatedAt = now
 	meaning.UpdatedAt = now
 
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Insert(schema.DictionaryMeanings.Name.String()).
 		Columns(schema.DictionaryMeanings.InsertColumns()...).
 		Values(
@@ -80,16 +68,14 @@ func (r *Repo) CreateMeaning(ctx context.Context, meaning *model.DictionaryMeani
 			meaning.CreatedAt,
 			meaning.UpdatedAt,
 		).
-		Suffix("RETURNING " + schema.DictionaryMeanings.ID.Bare()).
-		ToSql()
+		Suffix("RETURNING " + schema.DictionaryMeanings.ID.Bare())
+
+	id, err := database.ExecInsertWithReturn[int64](ctx, r.q, builder)
 	if err != nil {
 		return err
 	}
 
-	err = r.q.QueryRow(ctx, query, args...).Scan(&meaning.ID)
-	if err != nil {
-		return database.WrapDBError(err)
-	}
+	meaning.ID = id
 
 	return nil
 }
@@ -103,7 +89,7 @@ func (r *Repo) CreateTranslation(ctx context.Context, translation *model.Diction
 	now := r.clock.Now()
 	translation.CreatedAt = now
 
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Insert(schema.DictionaryTranslations.Name.String()).
 		Columns(schema.DictionaryTranslations.InsertColumns()...).
 		Values(
@@ -111,21 +97,18 @@ func (r *Repo) CreateTranslation(ctx context.Context, translation *model.Diction
 			translation.TranslationRu,
 			translation.CreatedAt,
 		).
-		Suffix("ON CONFLICT (dictionary_meaning_id, translation_ru) DO NOTHING RETURNING " + schema.DictionaryTranslations.ID.Bare()).
-		ToSql()
-	if err != nil {
-		return err
-	}
+		Suffix("ON CONFLICT (dictionary_meaning_id, translation_ru) DO NOTHING RETURNING " + schema.DictionaryTranslations.ID.Bare())
 
-	err = r.q.QueryRow(ctx, query, args...).Scan(&translation.ID)
+	id, err := database.ExecInsertWithReturn[int64](ctx, r.q, builder)
 	if err != nil {
 		// Если конфликт, возвращаем nil (ON CONFLICT DO NOTHING)
 		if err.Error() == "no rows in result set" {
 			return nil
 		}
-		return database.WrapDBError(err)
+		return err
 	}
+
+	translation.ID = id
 
 	return nil
 }
-

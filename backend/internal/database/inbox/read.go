@@ -10,33 +10,21 @@ import (
 
 // GetByID возвращает inbox item по ID.
 func (r *Repo) GetByID(ctx context.Context, id int64) (model.InboxItem, error) {
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Select(schema.InboxItems.All()...).
 		From(schema.InboxItems.Name.String()).
-		Where(schema.InboxItems.ID.Eq(id)).
-		ToSql()
-	if err != nil {
-		return model.InboxItem{}, err
-	}
+		Where(schema.InboxItems.ID.Eq(id))
 
-	item, err := database.GetOne[model.InboxItem](ctx, r.q, query, args...)
-	if err != nil {
-		return model.InboxItem{}, err
-	}
-	return *item, nil
+	return database.NewQuery[model.InboxItem](r.q, builder).One(ctx)
 }
 
 // List возвращает список всех inbox items, отсортированных по дате создания (новые первыми).
 func (r *Repo) List(ctx context.Context) ([]model.InboxItem, error) {
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Select(schema.InboxItems.All()...).
 		From(schema.InboxItems.Name.String()).
-		OrderBy(schema.InboxItems.CreatedAt.Desc()).
-		ToSql()
-	if err != nil {
-		return nil, err
-	}
+		OrderBy(schema.InboxItems.CreatedAt.Desc())
 
-	return database.Select[model.InboxItem](ctx, r.q, query, args...)
+	return database.NewQuery[model.InboxItem](r.q, builder).List(ctx)
 }
 

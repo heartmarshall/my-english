@@ -7,9 +7,11 @@ package graph
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/transport"
+	ctxlog "github.com/heartmarshall/my-english/pkg/context"
 )
 
 // Examples is the resolver for the examples field.
@@ -164,6 +166,13 @@ func (r *mutationResolver) ReviewMeaning(ctx context.Context, meaningID string, 
 
 // Words is the resolver for the words field.
 func (r *queryResolver) Words(ctx context.Context, filter *WordFilter, first *int, after *string) (*WordConnection, error) {
+	// Логируем входные параметры для отладки
+	ctxlog.L(ctx).Info("Words resolver called",
+		slog.Any("filter", filter),
+		slog.Any("first", first),
+		slog.Any("after", after),
+	)
+
 	// Парсинг cursor в offset
 	offset := 0
 	if after != nil && *after != "" {
@@ -182,14 +191,33 @@ func (r *queryResolver) Words(ctx context.Context, filter *WordFilter, first *in
 	limit = database.NormalizeLimit(limit, database.DefaultLimit)
 
 	// Получение данных
-	words, err := r.words.List(ctx, ToWordFilter(filter), limit, offset)
+	wordFilter := ToWordFilter(filter)
+	ctxlog.L(ctx).Info("Calling words.List",
+		slog.Any("filter", wordFilter),
+		slog.Int("limit", limit),
+		slog.Int("offset", offset),
+	)
+	words, err := r.words.List(ctx, wordFilter, limit, offset)
 	if err != nil {
+		// Логируем ошибку перед обработкой
+		ctxlog.L(ctx).Error("words.List error",
+			slog.String("error", err.Error()),
+			slog.Any("filter", filter),
+		)
 		return nil, transport.HandleError(ctx, err)
 	}
 
 	// Подсчет totalCount
-	totalCount, err := r.words.Count(ctx, ToWordFilter(filter))
+	ctxlog.L(ctx).Info("Calling words.Count",
+		slog.Any("filter", wordFilter),
+	)
+	totalCount, err := r.words.Count(ctx, wordFilter)
 	if err != nil {
+		// Логируем ошибку перед обработкой
+		ctxlog.L(ctx).Error("words.Count error",
+			slog.String("error", err.Error()),
+			slog.Any("filter", filter),
+		)
 		return nil, transport.HandleError(ctx, err)
 	}
 

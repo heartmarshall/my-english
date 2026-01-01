@@ -16,7 +16,7 @@ func (r *Repo) Create(ctx context.Context, word *model.Word) error {
 
 	now := r.clock.Now()
 
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Insert(schema.Words.Name.String()).
 		Columns(schema.Words.InsertColumns()...).
 		Values(
@@ -26,17 +26,14 @@ func (r *Repo) Create(ctx context.Context, word *model.Word) error {
 			word.FrequencyRank,
 			now,
 		).
-		Suffix("RETURNING " + schema.Words.ID.Bare()).
-		ToSql()
+		Suffix("RETURNING " + schema.Words.ID.Bare())
+
+	id, err := database.ExecInsertWithReturn[int64](ctx, r.q, builder)
 	if err != nil {
 		return err
 	}
 
-	// Для возврата ID используем стандартный Scan, так как это одно поле
-	err = r.q.QueryRow(ctx, query, args...).Scan(&word.ID)
-	if err != nil {
-		return database.WrapDBError(err)
-	}
+	word.ID = id
 
 	word.CreatedAt = now
 	return nil
@@ -49,23 +46,19 @@ func (r *Repo) Update(ctx context.Context, word *model.Word) error {
 
 	text := strings.TrimSpace(strings.ToLower(word.Text))
 
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Update(schema.Words.Name.String()).
 		Set(schema.Words.Text.Bare(), text).
 		Set(schema.Words.Transcription.Bare(), word.Transcription). // Прямая передача
 		Set(schema.Words.AudioURL.Bare(), word.AudioURL).
 		Set(schema.Words.FrequencyRank.Bare(), word.FrequencyRank).
-		Where(schema.Words.ID.Eq(word.ID)).
-		ToSql()
+		Where(schema.Words.ID.Eq(word.ID))
+
+	rowsAffected, err := database.ExecOnly(ctx, r.q, builder)
 	if err != nil {
 		return err
 	}
-
-	cmd, err := r.q.Exec(ctx, query, args...)
-	if err != nil {
-		return database.WrapDBError(err)
-	}
-	if cmd.RowsAffected() == 0 {
+	if rowsAffected == 0 {
 		return database.ErrNotFound
 	}
 
@@ -74,15 +67,13 @@ func (r *Repo) Update(ctx context.Context, word *model.Word) error {
 }
 
 func (r *Repo) Delete(ctx context.Context, id int64) error {
-	query, args, err := database.Builder.Delete(schema.Words.Name.String()).Where(schema.Words.ID.Eq(id)).ToSql()
+	builder := database.Builder.Delete(schema.Words.Name.String()).Where(schema.Words.ID.Eq(id))
+
+	rowsAffected, err := database.ExecOnly(ctx, r.q, builder)
 	if err != nil {
 		return err
 	}
-	cmd, err := r.q.Exec(ctx, query, args...)
-	if err != nil {
-		return err
-	}
-	if cmd.RowsAffected() == 0 {
+	if rowsAffected == 0 {
 		return database.ErrNotFound
 	}
 	return nil

@@ -20,21 +20,18 @@ func (r *Repo) Create(ctx context.Context, tag *model.Tag) error {
 		return database.ErrInvalidInput
 	}
 
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Insert(schema.Tags.Name.String()).
 		Columns(schema.Tags.NameCol.Bare()).
 		Values(name).
-		Suffix("RETURNING " + schema.Tags.ID.Bare()).
-		ToSql()
+		Suffix("RETURNING " + schema.Tags.ID.Bare())
+
+	id, err := database.ExecInsertWithReturn[int64](ctx, r.q, builder)
 	if err != nil {
 		return err
 	}
 
-	err = r.q.QueryRow(ctx, query, args...).Scan(&tag.ID)
-	if err != nil {
-		return database.WrapDBError(err)
-	}
-
+	tag.ID = id
 	tag.Name = name
 	return nil
 }
@@ -71,20 +68,16 @@ func (r *Repo) GetOrCreate(ctx context.Context, name string) (model.Tag, error) 
 
 // Delete удаляет tag по ID.
 func (r *Repo) Delete(ctx context.Context, id int64) error {
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Delete(schema.Tags.Name.String()).
-		Where(schema.Tags.ID.Eq(id)).
-		ToSql()
+		Where(schema.Tags.ID.Eq(id))
+
+	rowsAffected, err := database.ExecOnly(ctx, r.q, builder)
 	if err != nil {
 		return err
 	}
 
-	commandTag, err := r.q.Exec(ctx, query, args...)
-	if err != nil {
-		return err
-	}
-
-	if commandTag.RowsAffected() == 0 {
+	if rowsAffected == 0 {
 		return database.ErrNotFound
 	}
 

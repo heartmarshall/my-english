@@ -3,9 +3,11 @@ package transport
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/heartmarshall/my-english/internal/service"
+	ctxlog "github.com/heartmarshall/my-english/pkg/context"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
@@ -54,7 +56,11 @@ func HandleError(ctx context.Context, err error) error {
 
 	default:
 		// Логируем реальную ошибку, но не показываем пользователю
-		// TODO: добавить логирование
+		logger := ctxlog.L(ctx)
+		logger.Error("internal server error",
+			slog.String("error", err.Error()),
+			slog.Any("error_type", err),
+		)
 		return NewGraphQLError(ctx, "Internal server error", CodeInternal)
 	}
 }

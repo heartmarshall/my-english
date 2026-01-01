@@ -14,7 +14,7 @@ func (r *Repo) Create(ctx context.Context, translation *model.Translation) error
 		return database.ErrInvalidInput
 	}
 
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Insert(schema.Translations.Name.String()).
 		Columns(schema.Translations.InsertColumns()...).
 		Values(
@@ -22,20 +22,18 @@ func (r *Repo) Create(ctx context.Context, translation *model.Translation) error
 			translation.TranslationRu,
 			translation.CreatedAt,
 		).
-		Suffix("ON CONFLICT (meaning_id, translation_ru) DO NOTHING RETURNING " + schema.Translations.ID.Bare()).
-		ToSql()
-	if err != nil {
-		return err
-	}
+		Suffix("ON CONFLICT (meaning_id, translation_ru) DO NOTHING RETURNING " + schema.Translations.ID.Bare())
 
-	err = r.q.QueryRow(ctx, query, args...).Scan(&translation.ID)
+	id, err := database.ExecInsertWithReturn[int64](ctx, r.q, builder)
 	if err != nil {
 		// Если конфликт, возвращаем nil (ON CONFLICT DO NOTHING)
 		if err.Error() == "no rows in result set" {
 			return nil
 		}
-		return database.WrapDBError(err)
+		return err
 	}
+
+	translation.ID = id
 
 	return nil
 }
@@ -56,14 +54,9 @@ func (r *Repo) CreateBatch(ctx context.Context, translations []*model.Translatio
 
 	qb = qb.Suffix("ON CONFLICT (meaning_id, translation_ru) DO NOTHING")
 
-	query, args, err := qb.ToSql()
+	_, err := database.ExecOnly(ctx, r.q, qb)
 	if err != nil {
 		return err
-	}
-
-	_, err = r.q.Exec(ctx, query, args...)
-	if err != nil {
-		return database.WrapDBError(err)
 	}
 
 	return nil
@@ -71,36 +64,20 @@ func (r *Repo) CreateBatch(ctx context.Context, translations []*model.Translatio
 
 // DeleteByMeaningID удаляет все переводы для meaning.
 func (r *Repo) DeleteByMeaningID(ctx context.Context, meaningID int64) error {
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Delete(schema.Translations.Name.String()).
-		Where(schema.Translations.MeaningID.Eq(meaningID)).
-		ToSql()
-	if err != nil {
-		return err
-	}
+		Where(schema.Translations.MeaningID.Eq(meaningID))
 
-	_, err = r.q.Exec(ctx, query, args...)
-	if err != nil {
-		return database.WrapDBError(err)
-	}
-
-	return nil
+	_, err := database.ExecOnly(ctx, r.q, builder)
+	return err
 }
 
 // Delete удаляет перевод по ID.
 func (r *Repo) Delete(ctx context.Context, id int64) error {
-	query, args, err := database.Builder.
+	builder := database.Builder.
 		Delete(schema.Translations.Name.String()).
-		Where(schema.Translations.ID.Eq(id)).
-		ToSql()
-	if err != nil {
-		return err
-	}
+		Where(schema.Translations.ID.Eq(id))
 
-	_, err = r.q.Exec(ctx, query, args...)
-	if err != nil {
-		return database.WrapDBError(err)
-	}
-
-	return nil
+	_, err := database.ExecOnly(ctx, r.q, builder)
+	return err
 }

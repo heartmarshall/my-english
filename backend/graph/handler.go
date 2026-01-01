@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -9,7 +11,9 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler/lru"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/99designs/gqlgen/graphql/playground"
+	ctxlog "github.com/heartmarshall/my-english/pkg/context"
 	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
 // ServerConfig — конфигурация GraphQL сервера.
@@ -36,6 +40,27 @@ func NewHandler(resolver *Resolver, cfg ServerConfig) http.Handler {
 	srv := handler.New(NewExecutableSchema(Config{
 		Resolvers: resolver,
 	}))
+
+	// Логирование ошибок GraphQL
+	srv.SetRecoverFunc(func(ctx context.Context, err interface{}) error {
+		logger := ctxlog.L(ctx)
+		logger.Error("graphql panic recovered",
+			slog.Any("error", err),
+		)
+		return gqlerror.Errorf("internal server error")
+	})
+
+	srv.SetErrorPresenter(func(ctx context.Context, e error) *gqlerror.Error {
+		logger := ctxlog.L(ctx)
+		logger.Error("graphql error",
+			slog.String("error", e.Error()),
+		)
+		// Возвращаем ошибку как есть, чтобы она попала в ответ
+		if gqlErr, ok := e.(*gqlerror.Error); ok {
+			return gqlErr
+		}
+		return gqlerror.Errorf(e.Error())
+	})
 
 	// Transports
 	srv.AddTransport(transport.Options{})
