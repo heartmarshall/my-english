@@ -14,6 +14,12 @@ export const GET_WORDS = gql`
           transcription
           audioUrl
           frequencyRank
+          createdAt
+          forms {
+            id
+            formText
+            formType
+          }
           meanings {
             id
             partOfSpeech
@@ -33,6 +39,11 @@ export const GET_WORDS = gql`
             tags {
               id
               name
+            }
+            synonymsAntonyms {
+              id
+              relatedMeaningId
+              relationType
             }
           }
         }
@@ -55,6 +66,12 @@ export const GET_WORD = gql`
       transcription
       audioUrl
       frequencyRank
+      createdAt
+      forms {
+        id
+        formText
+        formType
+      }
       meanings {
         id
         wordId
@@ -75,6 +92,11 @@ export const GET_WORD = gql`
         tags {
           id
           name
+        }
+        synonymsAntonyms {
+          id
+          relatedMeaningId
+          relationType
         }
       }
     }
@@ -127,6 +149,11 @@ export const GET_STUDY_QUEUE = gql`
         id
         name
       }
+      synonymsAntonyms {
+        id
+        relatedMeaningId
+        relationType
+      }
     }
   }
 `
@@ -155,6 +182,11 @@ export const CREATE_WORD = gql`
         transcription
         audioUrl
         frequencyRank
+        forms {
+          id
+          formText
+          formType
+        }
         meanings {
           id
           partOfSpeech
@@ -174,6 +206,11 @@ export const CREATE_WORD = gql`
           tags {
             id
             name
+          }
+          synonymsAntonyms {
+            id
+            relatedMeaningId
+            relationType
           }
         }
       }
@@ -190,6 +227,11 @@ export const UPDATE_WORD = gql`
         transcription
         audioUrl
         frequencyRank
+        forms {
+          id
+          formText
+          formType
+        }
         meanings {
           id
           partOfSpeech
@@ -209,6 +251,11 @@ export const UPDATE_WORD = gql`
           tags {
             id
             name
+          }
+          synonymsAntonyms {
+            id
+            relatedMeaningId
+            relationType
           }
         }
       }
@@ -248,6 +295,11 @@ export const CONVERT_INBOX_ITEM = gql`
         transcription
         audioUrl
         frequencyRank
+        forms {
+          id
+          formText
+          formType
+        }
         meanings {
           id
           partOfSpeech
@@ -267,6 +319,11 @@ export const CONVERT_INBOX_ITEM = gql`
           tags {
             id
             name
+          }
+          synonymsAntonyms {
+            id
+            relatedMeaningId
+            relationType
           }
         }
       }
@@ -296,6 +353,11 @@ export const REVIEW_MEANING = gql`
       tags {
         id
         name
+      }
+      synonymsAntonyms {
+        id
+        relatedMeaningId
+        relationType
       }
     }
   }

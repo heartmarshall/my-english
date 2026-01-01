@@ -1,7 +1,8 @@
-import DebugDashboard from "./DebugDashboard"
+import { MainPage } from "./pages/MainPage"
+import { Toaster } from "sonner"
 
 function App() {
-  return <DebugDashboard />
+  return <MainPage />
 }
 
 export default App

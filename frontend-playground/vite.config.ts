@@ -9,6 +9,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // @graphql-typed-document-node/core is types-only, provide a runtime shim
+      "@graphql-typed-document-node/core": path.resolve(__dirname, "./src/gql/typed-document-node-shim.ts"),
     },
   },
   server: {
