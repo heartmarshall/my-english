@@ -10,7 +10,7 @@ from typing import Set, List
 # ==================== НАСТРОЙКИ ====================
 
 # Директория для сканирования (путь относительно скрипта или абсолютный путь)
-TARGET_DIRECTORY = "/home/alodi/playground/my-english/backend/internal/database"
+TARGET_DIRECTORY = "/home/alodi/playground/my-english/backend_v2"
 
 # Имя выходного файла
 OUTPUT_FILE = "collected_content.txt"
@@ -60,6 +60,8 @@ EXCLUDED_EXTENSIONS: Set[str] = {
 
 # Исключаемые имена директорий (точное совпадение)
 EXCLUDED_DIRECTORIES: Set[str] = {
+    "docs",
+    "e2e",
     ".git",
     "__pycache__",
     "node_modules",

@@ -43,13 +43,28 @@ export function WordCardSheet({ wordId, open, onOpenChange }: WordCardSheetProps
   }) as { data: any; loading: boolean; error: any; refetch: () => void }
 
   const [updateWord, { loading: updating }] = useMutation(UPDATE_WORD, {
-    onCompleted: () => {
+    refetchQueries: [GET_WORDS], // Обновляем список слов после обновления
+    onCompleted: async () => {
       setIsEditing(false)
       toast.success("Word updated successfully")
-      refetch()
+      // Принудительно обновляем данные слова с network-only политикой
+      try {
+        await refetch()
+        console.log("Word refetched successfully")
+        // Форма обновится автоматически через useEffect при изменении data.word
+      } catch (err) {
+        console.error("Error refetching word:", err)
+      }
     },
-    onError: (err) => {
+    onError: (err: any) => {
       toast.error(`Failed to update: ${err.message}`)
+      console.error("Update error:", err)
+      if (err.graphQLErrors) {
+        console.error("GraphQL errors:", err.graphQLErrors)
+      }
+      if (err.networkError) {
+        console.error("Network error:", err.networkError)
+      }
     }
   })
 
@@ -80,8 +95,20 @@ export function WordCardSheet({ wordId, open, onOpenChange }: WordCardSheetProps
   // Инициализация формы при загрузке данных
   useEffect(() => {
     if (data?.word) {
-      setFormData({
-        text: data.word.text,
+      // Обрабатываем переводы: может быть массив или строка
+      const processTranslations = (translationRu: any): string[] => {
+        if (!translationRu) return [""]
+        if (Array.isArray(translationRu)) {
+          return translationRu.length > 0 ? translationRu : [""]
+        }
+        if (typeof translationRu === "string") {
+          return translationRu.trim() ? [translationRu] : [""]
+        }
+        return [""]
+      }
+
+      const newFormData = {
+        text: data.word.text || "",
         transcription: data.word.transcription || "",
         audioUrl: data.word.audioUrl || "",
         sourceContext: "", 
@@ -89,49 +116,77 @@ export function WordCardSheet({ wordId, open, onOpenChange }: WordCardSheetProps
           id: m.id, 
           partOfSpeech: m.partOfSpeech,
           definitionEn: m.definitionEn || "",
-          // Обработка переводов: берем первый из массива или пустую строку
-          translations: (m.translationRu && m.translationRu.length > 0) ? m.translationRu : [""], 
+          translations: processTranslations(m.translationRu),
           cefrLevel: m.cefrLevel || "",
           imageUrl: m.imageUrl || "",
           tags: m.tags?.map((t: any) => t.name) || [],
           examples: m.examples?.map((e: any) => ({
-            sentenceEn: e.sentenceEn,
+            sentenceEn: e.sentenceEn || "",
             sentenceRu: e.sentenceRu || "",
             sourceName: e.sourceName || null
           })) || []
         })) || []
-      })
+      }
+
+      // Обновляем форму при выходе из режима редактирования или при изменении данных
+      if (!isEditing) {
+        setFormData(newFormData)
+      }
     }
-  }, [data, isEditing]) // Reset form when entering edit mode
+  }, [data?.word, isEditing]) // Reset form when word data changes or when exiting edit mode
 
   // -- Handlers --
 
   const handleSave = () => {
-    if (!wordId || !formData) return
+    if (!wordId || !formData) {
+      toast.error("Form data is not ready")
+      return
+    }
+
+    // Валидация: проверяем, что есть хотя бы один перевод для каждого значения
+    const invalidMeanings = formData.meanings.filter((m: any) => {
+      const translation = m.translations?.[0]?.trim()
+      return !translation || translation === ""
+    })
+
+    if (invalidMeanings.length > 0) {
+      toast.error("Please provide at least one translation for each meaning")
+      return
+    }
+
+    // Подготавливаем данные для отправки
+    const input = {
+      text: formData.text?.trim() || "",
+      transcription: formData.transcription?.trim() || null,
+      audioUrl: formData.audioUrl?.trim() || null,
+      meanings: formData.meanings.map((m: any) => {
+        const translation = m.translations[0]?.trim()
+        if (!translation) {
+          throw new Error("Translation is required")
+        }
+        return {
+          partOfSpeech: m.partOfSpeech,
+          definitionEn: m.definitionEn?.trim() || null,
+          // Бэкенд ожидает translationRu как String! (согласно твоей схеме mutation CreateMeaningInput)
+          translationRu: translation,
+          // cefrLevel не поддерживается в GraphQL схеме MeaningInput
+          imageUrl: m.imageUrl?.trim() || null,
+          tags: m.tags || [],
+          examples: (m.examples || []).map((e: any) => ({
+            sentenceEn: e.sentenceEn?.trim() || "",
+            sentenceRu: e.sentenceRu?.trim() || null,
+            sourceName: e.sourceName?.trim() || null
+          }))
+        }
+      })
+    }
+
+    console.log("Saving word with input:", JSON.stringify(input, null, 2))
 
     updateWord({
       variables: {
         id: wordId,
-        input: {
-          text: formData.text,
-          transcription: formData.transcription || null,
-          audioUrl: formData.audioUrl || null,
-          meanings: formData.meanings.map((m: any) => ({
-            partOfSpeech: m.partOfSpeech,
-            definitionEn: m.definitionEn || null,
-            // Бэкенд ожидает translationRu как String! (согласно твоей схеме mutation CreateMeaningInput)
-            // Но мы храним массив в UI. Берем первый элемент.
-            translationRu: m.translations[0] || "translation", 
-            cefrLevel: m.cefrLevel || null,
-            imageUrl: m.imageUrl || null,
-            tags: m.tags,
-            examples: m.examples.map((e: any) => ({
-              sentenceEn: e.sentenceEn,
-              sentenceRu: e.sentenceRu || null,
-              sourceName: e.sourceName || null
-            }))
-          }))
-        }
+        input
       }
     })
   }
@@ -183,12 +238,19 @@ export function WordCardSheet({ wordId, open, onOpenChange }: WordCardSheetProps
       <SheetContent className="w-full sm:max-w-2xl flex flex-col h-full p-0">
         {loading ? (
           <div className="p-6 flex items-center justify-center h-full">
+            <SheetTitle className="sr-only">Loading word</SheetTitle>
             <Loader2Icon className="animate-spin text-muted-foreground" />
           </div>
         ) : error ? (
-          <div className="p-6 text-destructive">Error loading word</div>
+          <div className="p-6 text-destructive">
+            <SheetTitle className="sr-only">Error loading word</SheetTitle>
+            Error loading word
+          </div>
         ) : !word ? (
-          <div className="p-6">Word not found</div>
+          <div className="p-6">
+            <SheetTitle className="sr-only">Word not found</SheetTitle>
+            Word not found
+          </div>
         ) : (
           <>
             {/* --- HEADER --- */}
@@ -197,7 +259,7 @@ export function WordCardSheet({ wordId, open, onOpenChange }: WordCardSheetProps
                 <div className="flex-1">
                   {/* SheetTitle всегда должен быть для доступности */}
                   <SheetTitle className={isEditing ? "sr-only" : "text-3xl font-bold"}>
-                    {word.text}
+                    {word.text || "Word"}
                   </SheetTitle>
                   {isEditing && (
                     <Input 
@@ -228,7 +290,18 @@ export function WordCardSheet({ wordId, open, onOpenChange }: WordCardSheetProps
                 <div className="flex gap-2 ml-4">
                   {!isEditing && (
                     <>
-                      <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                          if (formData) {
+                            setIsEditing(true)
+                          } else {
+                            toast.error("Form data is not ready. Please wait for the word to load.")
+                          }
+                        }}
+                        disabled={!formData}
+                      >
                         Edit
                       </Button>
                       <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleDelete} disabled={deleting}>
@@ -244,10 +317,10 @@ export function WordCardSheet({ wordId, open, onOpenChange }: WordCardSheetProps
             <ScrollArea className="flex-1 px-6 py-6">
               <div className="flex flex-col gap-8 pb-10">
                 
-                {isEditing ? (
+                {isEditing && formData ? (
                   // === EDIT MODE ===
                   <div className="flex flex-col gap-6">
-                    {formData?.meanings.map((meaning: any, mIndex: number) => (
+                    {formData.meanings.map((meaning: any, mIndex: number) => (
                       <div key={mIndex} className="p-4 border rounded-lg bg-card relative group shadow-sm">
                         <Button 
                           variant="ghost" 

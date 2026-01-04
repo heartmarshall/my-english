@@ -49,18 +49,19 @@ type InboxItem struct {
 }
 
 type Meaning struct {
-	ID            string         `json:"id"`
-	WordID        string         `json:"wordId"`
-	PartOfSpeech  PartOfSpeech   `json:"partOfSpeech"`
-	DefinitionEn  *string        `json:"definitionEn,omitempty"`
-	TranslationRu []string       `json:"translationRu,omitempty"`
-	CefrLevel     *string        `json:"cefrLevel,omitempty"`
-	ImageURL      *string        `json:"imageUrl,omitempty"`
-	Status        LearningStatus `json:"status"`
-	NextReviewAt  *Time          `json:"nextReviewAt,omitempty"`
-	ReviewCount   int            `json:"reviewCount"`
-	Examples      []*Example     `json:"examples,omitempty"`
-	Tags          []*Tag         `json:"tags,omitempty"`
+	ID               string            `json:"id"`
+	WordID           string            `json:"wordId"`
+	PartOfSpeech     PartOfSpeech      `json:"partOfSpeech"`
+	DefinitionEn     *string           `json:"definitionEn,omitempty"`
+	TranslationRu    []string          `json:"translationRu,omitempty"`
+	CefrLevel        *string           `json:"cefrLevel,omitempty"`
+	ImageURL         *string           `json:"imageUrl,omitempty"`
+	Status           LearningStatus    `json:"status"`
+	NextReviewAt     *Time             `json:"nextReviewAt,omitempty"`
+	ReviewCount      int               `json:"reviewCount"`
+	Examples         []*Example        `json:"examples,omitempty"`
+	Tags             []*Tag            `json:"tags,omitempty"`
+	SynonymsAntonyms []*SynonymAntonym `json:"synonymsAntonyms,omitempty"`
 }
 
 type MeaningInput struct {
@@ -86,9 +87,16 @@ type Query struct {
 type Suggestion struct {
 	Text           string           `json:"text"`
 	Transcription  *string          `json:"transcription,omitempty"`
+	Definition     *string          `json:"definition,omitempty"`
 	Translations   []string         `json:"translations"`
 	Origin         SuggestionOrigin `json:"origin"`
 	ExistingWordID *string          `json:"existingWordId,omitempty"`
+}
+
+type SynonymAntonym struct {
+	ID               string       `json:"id"`
+	RelatedMeaningID string       `json:"relatedMeaningId"`
+	RelationType     RelationType `json:"relationType"`
 }
 
 type Tag struct {
@@ -101,12 +109,14 @@ type UpdateWordPayload struct {
 }
 
 type Word struct {
-	ID            string     `json:"id"`
-	Text          string     `json:"text"`
-	Transcription *string    `json:"transcription,omitempty"`
-	AudioURL      *string    `json:"audioUrl,omitempty"`
-	FrequencyRank *int       `json:"frequencyRank,omitempty"`
-	Meanings      []*Meaning `json:"meanings,omitempty"`
+	ID            string      `json:"id"`
+	Text          string      `json:"text"`
+	Transcription *string     `json:"transcription,omitempty"`
+	AudioURL      *string     `json:"audioUrl,omitempty"`
+	FrequencyRank *int        `json:"frequencyRank,omitempty"`
+	CreatedAt     *Time       `json:"createdAt,omitempty"`
+	Forms         []*WordForm `json:"forms,omitempty"`
+	Meanings      []*Meaning  `json:"meanings,omitempty"`
 }
 
 type WordConnection struct {
@@ -124,6 +134,12 @@ type WordFilter struct {
 	Search *string         `json:"search,omitempty"`
 	Status *LearningStatus `json:"status,omitempty"`
 	Tags   []string        `json:"tags,omitempty"`
+}
+
+type WordForm struct {
+	ID       string  `json:"id"`
+	FormText string  `json:"formText"`
+	FormType *string `json:"formType,omitempty"`
 }
 
 type CefrLevel string
@@ -365,6 +381,61 @@ func (e *PartOfSpeech) UnmarshalJSON(b []byte) error {
 }
 
 func (e PartOfSpeech) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type RelationType string
+
+const (
+	RelationTypeSynonym RelationType = "SYNONYM"
+	RelationTypeAntonym RelationType = "ANTONYM"
+)
+
+var AllRelationType = []RelationType{
+	RelationTypeSynonym,
+	RelationTypeAntonym,
+}
+
+func (e RelationType) IsValid() bool {
+	switch e {
+	case RelationTypeSynonym, RelationTypeAntonym:
+		return true
+	}
+	return false
+}
+
+func (e RelationType) String() string {
+	return string(e)
+}
+
+func (e *RelationType) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = RelationType(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid RelationType", str)
+	}
+	return nil
+}
+
+func (e RelationType) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *RelationType) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e RelationType) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

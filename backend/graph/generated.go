@@ -74,18 +74,19 @@ type ComplexityRoot struct {
 	}
 
 	Meaning struct {
-		CefrLevel     func(childComplexity int) int
-		DefinitionEn  func(childComplexity int) int
-		Examples      func(childComplexity int) int
-		ID            func(childComplexity int) int
-		ImageURL      func(childComplexity int) int
-		NextReviewAt  func(childComplexity int) int
-		PartOfSpeech  func(childComplexity int) int
-		ReviewCount   func(childComplexity int) int
-		Status        func(childComplexity int) int
-		Tags          func(childComplexity int) int
-		TranslationRu func(childComplexity int) int
-		WordID        func(childComplexity int) int
+		CefrLevel        func(childComplexity int) int
+		DefinitionEn     func(childComplexity int) int
+		Examples         func(childComplexity int) int
+		ID               func(childComplexity int) int
+		ImageURL         func(childComplexity int) int
+		NextReviewAt     func(childComplexity int) int
+		PartOfSpeech     func(childComplexity int) int
+		ReviewCount      func(childComplexity int) int
+		Status           func(childComplexity int) int
+		SynonymsAntonyms func(childComplexity int) int
+		Tags             func(childComplexity int) int
+		TranslationRu    func(childComplexity int) int
+		WordID           func(childComplexity int) int
 	}
 
 	Mutation struct {
@@ -113,11 +114,18 @@ type ComplexityRoot struct {
 	}
 
 	Suggestion struct {
+		Definition     func(childComplexity int) int
 		ExistingWordID func(childComplexity int) int
 		Origin         func(childComplexity int) int
 		Text           func(childComplexity int) int
 		Transcription  func(childComplexity int) int
 		Translations   func(childComplexity int) int
+	}
+
+	SynonymAntonym struct {
+		ID               func(childComplexity int) int
+		RelatedMeaningID func(childComplexity int) int
+		RelationType     func(childComplexity int) int
 	}
 
 	Tag struct {
@@ -131,6 +139,8 @@ type ComplexityRoot struct {
 
 	Word struct {
 		AudioURL      func(childComplexity int) int
+		CreatedAt     func(childComplexity int) int
+		Forms         func(childComplexity int) int
 		FrequencyRank func(childComplexity int) int
 		ID            func(childComplexity int) int
 		Meanings      func(childComplexity int) int
@@ -147,6 +157,12 @@ type ComplexityRoot struct {
 	WordEdge struct {
 		Cursor func(childComplexity int) int
 		Node   func(childComplexity int) int
+	}
+
+	WordForm struct {
+		FormText func(childComplexity int) int
+		FormType func(childComplexity int) int
+		ID       func(childComplexity int) int
 	}
 }
 
@@ -330,6 +346,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Meaning.Status(childComplexity), true
+	case "Meaning.synonymsAntonyms":
+		if e.complexity.Meaning.SynonymsAntonyms == nil {
+			break
+		}
+
+		return e.complexity.Meaning.SynonymsAntonyms(childComplexity), true
 	case "Meaning.tags":
 		if e.complexity.Meaning.Tags == nil {
 			break
@@ -497,6 +519,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Query.Words(childComplexity, args["filter"].(*WordFilter), args["first"].(*int), args["after"].(*string)), true
 
+	case "Suggestion.definition":
+		if e.complexity.Suggestion.Definition == nil {
+			break
+		}
+
+		return e.complexity.Suggestion.Definition(childComplexity), true
 	case "Suggestion.existingWordId":
 		if e.complexity.Suggestion.ExistingWordID == nil {
 			break
@@ -528,6 +556,25 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Suggestion.Translations(childComplexity), true
 
+	case "SynonymAntonym.id":
+		if e.complexity.SynonymAntonym.ID == nil {
+			break
+		}
+
+		return e.complexity.SynonymAntonym.ID(childComplexity), true
+	case "SynonymAntonym.relatedMeaningId":
+		if e.complexity.SynonymAntonym.RelatedMeaningID == nil {
+			break
+		}
+
+		return e.complexity.SynonymAntonym.RelatedMeaningID(childComplexity), true
+	case "SynonymAntonym.relationType":
+		if e.complexity.SynonymAntonym.RelationType == nil {
+			break
+		}
+
+		return e.complexity.SynonymAntonym.RelationType(childComplexity), true
+
 	case "Tag.id":
 		if e.complexity.Tag.ID == nil {
 			break
@@ -554,6 +601,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Word.AudioURL(childComplexity), true
+	case "Word.createdAt":
+		if e.complexity.Word.CreatedAt == nil {
+			break
+		}
+
+		return e.complexity.Word.CreatedAt(childComplexity), true
+	case "Word.forms":
+		if e.complexity.Word.Forms == nil {
+			break
+		}
+
+		return e.complexity.Word.Forms(childComplexity), true
 	case "Word.frequencyRank":
 		if e.complexity.Word.FrequencyRank == nil {
 			break
@@ -616,6 +675,25 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.WordEdge.Node(childComplexity), true
+
+	case "WordForm.formText":
+		if e.complexity.WordForm.FormText == nil {
+			break
+		}
+
+		return e.complexity.WordForm.FormText(childComplexity), true
+	case "WordForm.formType":
+		if e.complexity.WordForm.FormType == nil {
+			break
+		}
+
+		return e.complexity.WordForm.FormType(childComplexity), true
+	case "WordForm.id":
+		if e.complexity.WordForm.ID == nil {
+			break
+		}
+
+		return e.complexity.WordForm.ID(childComplexity), true
 
 	}
 	return 0, false
@@ -993,6 +1071,10 @@ func (ec *executionContext) fieldContext_CreateWordPayload_word(_ context.Contex
 				return ec.fieldContext_Word_audioUrl(ctx, field)
 			case "frequencyRank":
 				return ec.fieldContext_Word_frequencyRank(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Word_createdAt(ctx, field)
+			case "forms":
+				return ec.fieldContext_Word_forms(ctx, field)
 			case "meanings":
 				return ec.fieldContext_Word_meanings(ctx, field)
 			}
@@ -1714,6 +1796,43 @@ func (ec *executionContext) fieldContext_Meaning_tags(_ context.Context, field g
 	return fc, nil
 }
 
+func (ec *executionContext) _Meaning_synonymsAntonyms(ctx context.Context, field graphql.CollectedField, obj *Meaning) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Meaning_synonymsAntonyms,
+		func(ctx context.Context) (any, error) {
+			return obj.SynonymsAntonyms, nil
+		},
+		nil,
+		ec.marshalOSynonymAntonym2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐSynonymAntonymᚄ,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Meaning_synonymsAntonyms(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Meaning",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_SynonymAntonym_id(ctx, field)
+			case "relatedMeaningId":
+				return ec.fieldContext_SynonymAntonym_relatedMeaningId(ctx, field)
+			case "relationType":
+				return ec.fieldContext_SynonymAntonym_relationType(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type SynonymAntonym", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_addToInbox(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -2031,6 +2150,8 @@ func (ec *executionContext) fieldContext_Mutation_reviewMeaning(ctx context.Cont
 				return ec.fieldContext_Meaning_examples(ctx, field)
 			case "tags":
 				return ec.fieldContext_Meaning_tags(ctx, field)
+			case "synonymsAntonyms":
+				return ec.fieldContext_Meaning_synonymsAntonyms(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Meaning", field.Name)
 		},
@@ -2191,6 +2312,10 @@ func (ec *executionContext) fieldContext_Query_word(ctx context.Context, field g
 				return ec.fieldContext_Word_audioUrl(ctx, field)
 			case "frequencyRank":
 				return ec.fieldContext_Word_frequencyRank(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Word_createdAt(ctx, field)
+			case "forms":
+				return ec.fieldContext_Word_forms(ctx, field)
 			case "meanings":
 				return ec.fieldContext_Word_meanings(ctx, field)
 			}
@@ -2279,6 +2404,8 @@ func (ec *executionContext) fieldContext_Query_suggest(ctx context.Context, fiel
 				return ec.fieldContext_Suggestion_text(ctx, field)
 			case "transcription":
 				return ec.fieldContext_Suggestion_transcription(ctx, field)
+			case "definition":
+				return ec.fieldContext_Suggestion_definition(ctx, field)
 			case "translations":
 				return ec.fieldContext_Suggestion_translations(ctx, field)
 			case "origin":
@@ -2352,6 +2479,8 @@ func (ec *executionContext) fieldContext_Query_studyQueue(ctx context.Context, f
 				return ec.fieldContext_Meaning_examples(ctx, field)
 			case "tags":
 				return ec.fieldContext_Meaning_tags(ctx, field)
+			case "synonymsAntonyms":
+				return ec.fieldContext_Meaning_synonymsAntonyms(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Meaning", field.Name)
 		},
@@ -2575,6 +2704,35 @@ func (ec *executionContext) fieldContext_Suggestion_transcription(_ context.Cont
 	return fc, nil
 }
 
+func (ec *executionContext) _Suggestion_definition(ctx context.Context, field graphql.CollectedField, obj *Suggestion) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Suggestion_definition,
+		func(ctx context.Context) (any, error) {
+			return obj.Definition, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Suggestion_definition(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Suggestion",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Suggestion_translations(ctx context.Context, field graphql.CollectedField, obj *Suggestion) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -2657,6 +2815,93 @@ func (ec *executionContext) fieldContext_Suggestion_existingWordId(_ context.Con
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SynonymAntonym_id(ctx context.Context, field graphql.CollectedField, obj *SynonymAntonym) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_SynonymAntonym_id,
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_SynonymAntonym_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SynonymAntonym",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SynonymAntonym_relatedMeaningId(ctx context.Context, field graphql.CollectedField, obj *SynonymAntonym) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_SynonymAntonym_relatedMeaningId,
+		func(ctx context.Context) (any, error) {
+			return obj.RelatedMeaningID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_SynonymAntonym_relatedMeaningId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SynonymAntonym",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SynonymAntonym_relationType(ctx context.Context, field graphql.CollectedField, obj *SynonymAntonym) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_SynonymAntonym_relationType,
+		func(ctx context.Context) (any, error) {
+			return obj.RelationType, nil
+		},
+		nil,
+		ec.marshalNRelationType2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐRelationType,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_SynonymAntonym_relationType(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SynonymAntonym",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type RelationType does not have child fields")
 		},
 	}
 	return fc, nil
@@ -2754,6 +2999,10 @@ func (ec *executionContext) fieldContext_UpdateWordPayload_word(_ context.Contex
 				return ec.fieldContext_Word_audioUrl(ctx, field)
 			case "frequencyRank":
 				return ec.fieldContext_Word_frequencyRank(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Word_createdAt(ctx, field)
+			case "forms":
+				return ec.fieldContext_Word_forms(ctx, field)
 			case "meanings":
 				return ec.fieldContext_Word_meanings(ctx, field)
 			}
@@ -2908,6 +3157,72 @@ func (ec *executionContext) fieldContext_Word_frequencyRank(_ context.Context, f
 	return fc, nil
 }
 
+func (ec *executionContext) _Word_createdAt(ctx context.Context, field graphql.CollectedField, obj *Word) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Word_createdAt,
+		func(ctx context.Context) (any, error) {
+			return obj.CreatedAt, nil
+		},
+		nil,
+		ec.marshalOTime2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTime,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Word_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Word",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Word_forms(ctx context.Context, field graphql.CollectedField, obj *Word) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Word_forms,
+		func(ctx context.Context) (any, error) {
+			return obj.Forms, nil
+		},
+		nil,
+		ec.marshalOWordForm2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWordFormᚄ,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Word_forms(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Word",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_WordForm_id(ctx, field)
+			case "formText":
+				return ec.fieldContext_WordForm_formText(ctx, field)
+			case "formType":
+				return ec.fieldContext_WordForm_formType(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type WordForm", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Word_meanings(ctx context.Context, field graphql.CollectedField, obj *Word) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -2956,6 +3271,8 @@ func (ec *executionContext) fieldContext_Word_meanings(_ context.Context, field 
 				return ec.fieldContext_Meaning_examples(ctx, field)
 			case "tags":
 				return ec.fieldContext_Meaning_tags(ctx, field)
+			case "synonymsAntonyms":
+				return ec.fieldContext_Meaning_synonymsAntonyms(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Meaning", field.Name)
 		},
@@ -3125,10 +3442,101 @@ func (ec *executionContext) fieldContext_WordEdge_node(_ context.Context, field 
 				return ec.fieldContext_Word_audioUrl(ctx, field)
 			case "frequencyRank":
 				return ec.fieldContext_Word_frequencyRank(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Word_createdAt(ctx, field)
+			case "forms":
+				return ec.fieldContext_Word_forms(ctx, field)
 			case "meanings":
 				return ec.fieldContext_Word_meanings(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Word", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _WordForm_id(ctx context.Context, field graphql.CollectedField, obj *WordForm) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_WordForm_id,
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_WordForm_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "WordForm",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _WordForm_formText(ctx context.Context, field graphql.CollectedField, obj *WordForm) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_WordForm_formText,
+		func(ctx context.Context) (any, error) {
+			return obj.FormText, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_WordForm_formText(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "WordForm",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _WordForm_formType(ctx context.Context, field graphql.CollectedField, obj *WordForm) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_WordForm_formType,
+		func(ctx context.Context) (any, error) {
+			return obj.FormType, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_WordForm_formType(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "WordForm",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -5091,6 +5499,8 @@ func (ec *executionContext) _Meaning(ctx context.Context, sel ast.SelectionSet, 
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "synonymsAntonyms":
+			out.Values[i] = ec._Meaning_synonymsAntonyms(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -5443,6 +5853,8 @@ func (ec *executionContext) _Suggestion(ctx context.Context, sel ast.SelectionSe
 			}
 		case "transcription":
 			out.Values[i] = ec._Suggestion_transcription(ctx, field, obj)
+		case "definition":
+			out.Values[i] = ec._Suggestion_definition(ctx, field, obj)
 		case "translations":
 			out.Values[i] = ec._Suggestion_translations(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -5455,6 +5867,55 @@ func (ec *executionContext) _Suggestion(ctx context.Context, sel ast.SelectionSe
 			}
 		case "existingWordId":
 			out.Values[i] = ec._Suggestion_existingWordId(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var synonymAntonymImplementors = []string{"SynonymAntonym"}
+
+func (ec *executionContext) _SynonymAntonym(ctx context.Context, sel ast.SelectionSet, obj *SynonymAntonym) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, synonymAntonymImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SynonymAntonym")
+		case "id":
+			out.Values[i] = ec._SynonymAntonym_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "relatedMeaningId":
+			out.Values[i] = ec._SynonymAntonym_relatedMeaningId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "relationType":
+			out.Values[i] = ec._SynonymAntonym_relationType(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -5588,6 +6049,10 @@ func (ec *executionContext) _Word(ctx context.Context, sel ast.SelectionSet, obj
 			out.Values[i] = ec._Word_audioUrl(ctx, field, obj)
 		case "frequencyRank":
 			out.Values[i] = ec._Word_frequencyRank(ctx, field, obj)
+		case "createdAt":
+			out.Values[i] = ec._Word_createdAt(ctx, field, obj)
+		case "forms":
+			out.Values[i] = ec._Word_forms(ctx, field, obj)
 		case "meanings":
 			field := field
 
@@ -5714,6 +6179,52 @@ func (ec *executionContext) _WordEdge(ctx context.Context, sel ast.SelectionSet,
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var wordFormImplementors = []string{"WordForm"}
+
+func (ec *executionContext) _WordForm(ctx context.Context, sel ast.SelectionSet, obj *WordForm) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, wordFormImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("WordForm")
+		case "id":
+			out.Values[i] = ec._WordForm_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "formText":
+			out.Values[i] = ec._WordForm_formText(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "formType":
+			out.Values[i] = ec._WordForm_formType(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -6319,6 +6830,16 @@ func (ec *executionContext) marshalNPartOfSpeech2githubᚗcomᚋheartmarshallᚋ
 	return v
 }
 
+func (ec *executionContext) unmarshalNRelationType2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐRelationType(ctx context.Context, v any) (RelationType, error) {
+	var res RelationType
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNRelationType2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐRelationType(ctx context.Context, sel ast.SelectionSet, v RelationType) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v any) (string, error) {
 	res, err := graphql.UnmarshalString(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -6427,6 +6948,16 @@ func (ec *executionContext) unmarshalNSuggestionOrigin2githubᚗcomᚋheartmarsh
 
 func (ec *executionContext) marshalNSuggestionOrigin2githubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐSuggestionOrigin(ctx context.Context, sel ast.SelectionSet, v SuggestionOrigin) graphql.Marshaler {
 	return v
+}
+
+func (ec *executionContext) marshalNSynonymAntonym2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐSynonymAntonym(ctx context.Context, sel ast.SelectionSet, v *SynonymAntonym) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._SynonymAntonym(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNTag2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTag(ctx context.Context, sel ast.SelectionSet, v *Tag) graphql.Marshaler {
@@ -6545,6 +7076,16 @@ func (ec *executionContext) marshalNWordEdge2ᚖgithubᚗcomᚋheartmarshallᚋm
 		return graphql.Null
 	}
 	return ec._WordEdge(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNWordForm2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWordForm(ctx context.Context, sel ast.SelectionSet, v *WordForm) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._WordForm(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalN__Directive2githubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐDirective(ctx context.Context, sel ast.SelectionSet, v introspection.Directive) graphql.Marshaler {
@@ -7082,6 +7623,53 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	return res
 }
 
+func (ec *executionContext) marshalOSynonymAntonym2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐSynonymAntonymᚄ(ctx context.Context, sel ast.SelectionSet, v []*SynonymAntonym) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNSynonymAntonym2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐSynonymAntonym(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) marshalOTag2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐTagᚄ(ctx context.Context, sel ast.SelectionSet, v []*Tag) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
@@ -7160,6 +7748,53 @@ func (ec *executionContext) unmarshalOWordFilter2ᚖgithubᚗcomᚋheartmarshall
 	}
 	res, err := ec.unmarshalInputWordFilter(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOWordForm2ᚕᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWordFormᚄ(ctx context.Context, sel ast.SelectionSet, v []*WordForm) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNWordForm2ᚖgithubᚗcomᚋheartmarshallᚋmyᚑenglishᚋgraphᚐWordForm(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) marshalO__EnumValue2ᚕgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐEnumValueᚄ(ctx context.Context, sel ast.SelectionSet, v []introspection.EnumValue) graphql.Marshaler {

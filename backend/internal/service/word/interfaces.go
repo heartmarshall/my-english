@@ -7,6 +7,10 @@ import (
 	"github.com/heartmarshall/my-english/internal/model"
 )
 
+type DictionaryFetcher interface {
+	FetchWord(ctx context.Context, word string) (*model.DictionaryWordData, error)
+}
+
 // WordRepository определяет интерфейс для работы со словами.
 // Интерфейс определён здесь (у потребителя) согласно Go idiom.
 type WordRepository interface {
@@ -58,7 +62,11 @@ type TranslationRepository interface {
 
 // DictionaryRepository определяет интерфейс для работы с внутренним словарём.
 type DictionaryRepository interface {
-	GetByText(ctx context.Context, text string) (model.DictionaryWord, error)
+	// GetByText возвращает список вариантов слова из разных источников.
+	GetByText(ctx context.Context, text string) ([]model.DictionaryWord, error)
+	// SaveWordData сохраняет полные данные о слове.
+	SaveWordData(ctx context.Context, data *model.DictionaryWordData) error
+	// SearchSimilar ищет похожие слова.
 	SearchSimilar(ctx context.Context, query string, limit int, similarityThreshold float64) ([]model.DictionaryWord, error)
 	GetMeaningsByWordID(ctx context.Context, wordID int64) ([]model.DictionaryMeaning, error)
 	GetTranslationsByMeaningID(ctx context.Context, meaningID int64) ([]model.DictionaryTranslation, error)

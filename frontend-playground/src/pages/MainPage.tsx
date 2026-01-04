@@ -52,7 +52,10 @@ export function MainPage() {
 
       {/* --- CONTENT --- */}
       <main className="container mx-auto px-4 py-6">
-        <DictionaryList onWordClick={handleSelectLocal} />
+        <DictionaryList 
+          onWordClick={handleSelectLocal}
+          onAddWord={() => setIsAddDialogOpen(true)}
+        />
       </main>
 
       {/* --- DIALOGS & SHEETS --- */}

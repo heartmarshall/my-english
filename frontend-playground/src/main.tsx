@@ -7,11 +7,20 @@ import App from './App.tsx'
 
 const httpLink = new HttpLink({
   uri: '/graphql',
+  credentials: 'same-origin',
 })
 
 const client = new ApolloClient({
   link: httpLink,
   cache: new InMemoryCache(),
+  defaultOptions: {
+    watchQuery: {
+      errorPolicy: 'all',
+    },
+    query: {
+      errorPolicy: 'all',
+    },
+  },
 })
 
 createRoot(document.getElementById('root')!).render(

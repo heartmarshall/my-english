@@ -76,6 +76,7 @@ type Suggestion struct {
 	Text           string
 	Transcription  *string
 	Translations   []string
-	Origin         string // "LOCAL" или "DICTIONARY"
+	Definition     *string // <-- Добавили
+	Origin         string  // "LOCAL" или "DICTIONARY"
 	ExistingWordID *int64
 }

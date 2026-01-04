@@ -2,24 +2,26 @@ package dictionary
 
 import (
 	"context"
-	"strings"
+	"fmt"
 
+	"github.com/Masterminds/squirrel"
 	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/database/schema"
 	"github.com/heartmarshall/my-english/internal/model"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// GetByText возвращает слово из словаря по тексту.
-func (r *Repo) GetByText(ctx context.Context, text string) (model.DictionaryWord, error) {
+// GetByText возвращает список слов из словаря по тексту (из разных источников).
+func (r *Repo) GetByText(ctx context.Context, text string) ([]model.DictionaryWord, error) {
 	builder := database.Builder.
 		Select(schema.DictionaryWords.All()...).
 		From(schema.DictionaryWords.Name.String()).
 		Where(schema.DictionaryWords.Text.Eq(text))
 
-	return database.NewQuery[model.DictionaryWord](r.q, builder).One(ctx)
+	return database.NewQuery[model.DictionaryWord](r.q, builder).List(ctx)
 }
 
-// SearchSimilar использует триграммный поиск для поиска похожих слов в словаре.
+// SearchSimilar использует триграммный поиск.
 func (r *Repo) SearchSimilar(ctx context.Context, query string, limit int, similarityThreshold float64) ([]model.DictionaryWord, error) {
 	if limit <= 0 {
 		limit = 10
@@ -28,63 +30,121 @@ func (r *Repo) SearchSimilar(ctx context.Context, query string, limit int, simil
 		similarityThreshold = 0.3
 	}
 
-	selectCols := make([]string, 0, len(schema.DictionaryWords.All()))
+	trigramCond := squirrel.Or{
+		squirrel.Expr("word_similarity(?, ?) > ?", query, schema.DictionaryWords.Text, similarityThreshold),
+		squirrel.Expr("? % ?", schema.DictionaryWords.Text, query),
+	}
+
+	// 1. Внутренний запрос с расчетом similarity
+	innerBuilder := database.Builder.
+		Select(schema.DictionaryWords.All()...).
+		Column(squirrel.Expr("word_similarity(?, ?) AS similarity", query, schema.DictionaryWords.Text)).
+		From(schema.DictionaryWords.Name.String()).
+		Where(trigramCond)
+
+	// 2. Внешний запрос для чистой проекции и сортировки
+	finalCols := make([]string, 0)
 	for _, col := range schema.DictionaryWords.All() {
-		selectCols = append(selectCols, string(col))
+		finalCols = append(finalCols, "sub."+schema.Column(col).Bare())
 	}
 
-	sqlQuery := `
-		SELECT ` + strings.Join(selectCols, ", ") + `
-		FROM ` + schema.DictionaryWords.Name.String() + `
-		WHERE word_similarity($1, ` + string(schema.DictionaryWords.Text) + `) > $2
-		   OR ` + string(schema.DictionaryWords.Text) + ` % $1
-		ORDER BY word_similarity($1, ` + string(schema.DictionaryWords.Text) + `) DESC
-		LIMIT $3
-	`
+	outerBuilder := database.Builder.
+		Select(finalCols...).
+		FromSelect(innerBuilder, "sub").
+		OrderBy("sub.similarity DESC").
+		Limit(uint64(limit))
 
-	args := []interface{}{query, similarityThreshold, limit}
-
-	// Для прямого SQL нужно создать обертку, реализующую SQLBuilder
-	// Пока используем старый метод, так как это прямой SQL
-	words, err := database.Select[model.DictionaryWord](ctx, r.q, sqlQuery, args...)
-	if err != nil {
-		return nil, err
-	}
-
-	return words, nil
+	return database.NewQuery[model.DictionaryWord](r.q, outerBuilder).List(ctx)
 }
 
-// Create создаёт новое слово в словаре.
-func (r *Repo) Create(ctx context.Context, word *model.DictionaryWord) error {
-	if word == nil {
-		return database.ErrInvalidInput
+// SaveWordData сохраняет слово и все его связи в БД (Write-through cache).
+func (r *Repo) SaveWordData(ctx context.Context, data *model.DictionaryWordData) error {
+	// Приводим интерфейс Querier к *pgxpool.Pool для управления транзакцией,
+	// либо r.q уже должен уметь запускать транзакции (если используется TxManager).
+	// В текущей реализации database.WithTx требует *pgxpool.Pool.
+	pool, ok := r.q.(*pgxpool.Pool)
+	if !ok {
+		return fmt.Errorf("repository querier is not a connection pool, cannot start transaction")
 	}
 
-	now := r.clock.Now()
-	word.CreatedAt = now
-	word.UpdatedAt = now
+	return database.WithTx(ctx, pool, func(ctx context.Context, tx database.Querier) error {
+		now := r.clock.Now()
 
-	builder := database.Builder.
-		Insert(schema.DictionaryWords.Name.String()).
-		Columns(schema.DictionaryWords.InsertColumns()...).
-		Values(
-			word.Text,
-			word.Transcription,
-			word.AudioURL,
-			word.FrequencyRank,
-			word.Source,
-			word.SourceID,
-			word.CreatedAt,
-			word.UpdatedAt,
-		).
-		Suffix("ON CONFLICT (text) DO UPDATE SET updated_at = EXCLUDED.updated_at RETURNING " + schema.DictionaryWords.ID.Bare())
+		// 1. Сохраняем/Обновляем слово
+		// ON CONFLICT (text, source) DO UPDATE ...
+		builder := database.Builder.
+			Insert(schema.DictionaryWords.Name.String()).
+			Columns(schema.DictionaryWords.InsertColumns()...).
+			Values(
+				data.Word.Text,
+				data.Word.Transcription,
+				data.Word.AudioURL,
+				data.Word.FrequencyRank,
+				data.Word.Source,
+				data.Word.SourceID,
+				now, // created_at
+				now, // updated_at
+			).
+			Suffix("ON CONFLICT (text, source) DO UPDATE SET updated_at = EXCLUDED.updated_at, transcription = EXCLUDED.transcription, audio_url = EXCLUDED.audio_url RETURNING id")
 
-	id, err := database.ExecInsertWithReturn[int64](ctx, r.q, builder)
-	if err != nil {
-		return err
-	}
+		id, err := database.ExecInsertWithReturn[int64](ctx, tx, builder)
+		if err != nil {
+			return fmt.Errorf("failed to upsert word: %w", err)
+		}
+		data.Word.ID = id
 
-	word.ID = id
+		// 2. Удаляем старые значения для этого слова (стратегия полной замены для кэша)
+		delBuilder := database.Builder.
+			Delete(schema.DictionaryMeanings.Name.String()).
+			Where(schema.DictionaryMeanings.DictionaryWordID.Eq(id))
 
-	return nil
+		if _, err := database.ExecOnly(ctx, tx, delBuilder); err != nil {
+			return fmt.Errorf("failed to cleanup meanings: %w", err)
+		}
+
+		// 3. Вставляем новые значения
+		for _, mData := range data.Meanings {
+			mData.Meaning.DictionaryWordID = id
+			mData.Meaning.CreatedAt = now
+			mData.Meaning.UpdatedAt = now
+
+			mBuilder := database.Builder.
+				Insert(schema.DictionaryMeanings.Name.String()).
+				Columns(schema.DictionaryMeanings.InsertColumns()...).
+				Values(
+					mData.Meaning.DictionaryWordID,
+					mData.Meaning.PartOfSpeech,
+					mData.Meaning.DefinitionEn,
+					mData.Meaning.CefrLevel,
+					mData.Meaning.ImageURL,
+					mData.Meaning.OrderIndex,
+					now, now,
+				).
+				Suffix("RETURNING id")
+
+			mID, err := database.ExecInsertWithReturn[int64](ctx, tx, mBuilder)
+			if err != nil {
+				return fmt.Errorf("failed to insert meaning: %w", err)
+			}
+
+			// 4. Вставляем переводы (если есть)
+			if len(mData.Translations) > 0 {
+				tBuilder := database.Builder.
+					Insert(schema.DictionaryTranslations.Name.String()).
+					Columns(schema.DictionaryTranslations.InsertColumns()...)
+
+				for _, t := range mData.Translations {
+					tBuilder = tBuilder.Values(mID, t.TranslationRu, now)
+				}
+
+				tBuilder = tBuilder.Suffix("ON CONFLICT DO NOTHING")
+
+				if _, err := database.ExecOnly(ctx, tx, tBuilder); err != nil {
+					return fmt.Errorf("failed to insert translations: %w", err)
+				}
+			}
+		}
+
+		return nil
+	})
 }

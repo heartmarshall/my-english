@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/heartmarshall/my-english/graph"
+	"github.com/heartmarshall/my-english/internal/clients/freedict"
 	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/database/dictionary"
 	"github.com/heartmarshall/my-english/internal/database/example"
@@ -114,6 +115,7 @@ func newServices(repos *Repositories, txRunner *TxRunner, repoFactory *Repositor
 		MeaningTag:   repos.MeaningTag,
 		Translations: repos.Translations,
 		Dictionary:   repos.Dictionary,
+		Fetcher:      freedict.NewClient(),
 		TxRunner:     txRunner,
 		RepoFactory:  repoFactory,
 	})

@@ -120,6 +120,7 @@ export const GET_SUGGEST = gql`
       text
       transcription
       translations
+      definition  # <--- Добавили это поле
       origin
       existingWordId
     }

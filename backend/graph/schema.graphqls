@@ -41,6 +41,11 @@ enum SuggestionOrigin {
   DICTIONARY # Найдено в стороннем словаре (Еще не загружено в словарь пользователя)
 }
 
+enum RelationType {
+  SYNONYM
+  ANTONYM
+}
+
 type PageInfo {
   hasNextPage: Boolean!
   endCursor: String # Строка для запроса следующей страницы
@@ -59,6 +64,10 @@ type Word {
   audioUrl: String
   # Насколько часто слово встречается в современной речи. Необязательное поле.
   frequencyRank: Int
+  # Дата создания слова. Необязательное поле.
+  createdAt: Time
+  # Формы слова (времена глаголов, множественное число и т.д.). Необязательное поле.
+  forms: [WordForm!]
   # значения слова. Необязательное поле.
   meanings: [Meaning!]
 }
@@ -87,6 +96,8 @@ type Meaning {
   examples: [Example!]
   # теги слова. Необязательное поле.
   tags: [Tag!]
+  # синонимы и антонимы значения. Необязательное поле.
+  synonymsAntonyms: [SynonymAntonym!]
 }
 
 type Example {
@@ -99,6 +110,18 @@ type Example {
 type Tag {
   id: ID!
   name: String!
+}
+
+type WordForm {
+  id: ID!
+  formText: String!
+  formType: String
+}
+
+type SynonymAntonym {
+  id: ID!
+  relatedMeaningId: ID!
+  relationType: RelationType!
 }
 
 type DashboardStats {
@@ -128,6 +151,8 @@ type InboxItem {
 type Suggestion {
   text: String!
   transcription: String
+  # Определение слова на английском языке. Необязательное поле.
+  definition: String
   # Список возможных переводов.
   translations: [String!]!
   origin: SuggestionOrigin!

@@ -1,6 +1,6 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useQuery } from "@apollo/client/react"
-import { SearchIcon, Loader2Icon, MoreHorizontal } from "lucide-react"
+import { SearchIcon, Loader2Icon, PlusIcon, ArrowUpDownIcon, Settings2Icon } from "lucide-react"
 
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -14,17 +14,48 @@ import {
   TableHeader, 
   TableRow 
 } from "@/components/ui/table"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useDebounce } from "@/hooks/use-debounce"
 import { GET_WORDS } from "@/graphql/queries"
 import { LearningStatus } from "@/gql/graphql"
 
 interface DictionaryListProps {
   onWordClick: (wordId: string) => void
+  onAddWord: () => void
 }
 
-export function DictionaryList({ onWordClick }: DictionaryListProps) {
+type SortField = "text" | "translation" | "partOfSpeech" | "status" | "createdAt"
+type SortDirection = "asc" | "desc"
+
+interface ColumnVisibility {
+  translation: boolean
+  partOfSpeech: boolean
+  status: boolean
+  tags: boolean
+  createdAt: boolean
+  meanings: boolean
+}
+
+export function DictionaryList({ onWordClick, onAddWord }: DictionaryListProps) {
   const [search, setSearch] = useState("")
-  const [status, setStatus] = useState<string>("ALL") 
+  const [status, setStatus] = useState<string>("ALL")
+  const [sortField, setSortField] = useState<SortField>("createdAt")
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>({
+    translation: true,
+    partOfSpeech: true,
+    status: true,
+    tags: true,
+    createdAt: true,
+    meanings: true,
+  })
   
   const debouncedSearch = useDebounce(search, 500)
 
@@ -32,9 +63,12 @@ export function DictionaryList({ onWordClick }: DictionaryListProps) {
   if (debouncedSearch) filter.search = debouncedSearch
   if (status !== "ALL") filter.status = status as LearningStatus
 
+  // Передаем null вместо пустого объекта, если фильтр пустой
+  const filterValue = Object.keys(filter).length > 0 ? filter : null
+
   const { data, loading, error, fetchMore } = useQuery(GET_WORDS, {
     variables: { 
-      filter,
+      filter: filterValue,
       first: 50 
     },
     notifyOnNetworkStatusChange: true
@@ -43,6 +77,47 @@ export function DictionaryList({ onWordClick }: DictionaryListProps) {
   const words = data?.words?.edges?.map((edge: any) => edge.node) || []
   const pageInfo = data?.words?.pageInfo
   const totalCount = data?.words?.totalCount || 0
+
+  // Сортировка слов
+  const sortedWords = useMemo(() => {
+    const sorted = [...words]
+    sorted.sort((a, b) => {
+      let aValue: any
+      let bValue: any
+
+      switch (sortField) {
+        case "text":
+          aValue = a.text?.toLowerCase() || ""
+          bValue = b.text?.toLowerCase() || ""
+          break
+        case "translation":
+          const aTrans = a.meanings?.[0]?.translationRu?.[0] || a.meanings?.[0]?.translationRu || ""
+          const bTrans = b.meanings?.[0]?.translationRu?.[0] || b.meanings?.[0]?.translationRu || ""
+          aValue = (typeof aTrans === "string" ? aTrans : aTrans[0] || "").toLowerCase()
+          bValue = (typeof bTrans === "string" ? bTrans : bTrans[0] || "").toLowerCase()
+          break
+        case "partOfSpeech":
+          aValue = a.meanings?.[0]?.partOfSpeech || ""
+          bValue = b.meanings?.[0]?.partOfSpeech || ""
+          break
+        case "status":
+          aValue = a.meanings?.[0]?.status || ""
+          bValue = b.meanings?.[0]?.status || ""
+          break
+        case "createdAt":
+          aValue = new Date(a.createdAt).getTime()
+          bValue = new Date(b.createdAt).getTime()
+          break
+        default:
+          return 0
+      }
+
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1
+      return 0
+    })
+    return sorted
+  }, [words, sortField, sortDirection])
 
   const handleLoadMore = () => {
     if (pageInfo?.hasNextPage) {
@@ -76,6 +151,22 @@ export function DictionaryList({ onWordClick }: DictionaryListProps) {
     }
   }
 
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortDirection("asc")
+    }
+  }
+
+  const toggleColumnVisibility = (column: keyof ColumnVisibility) => {
+    setColumnVisibility(prev => ({
+      ...prev,
+      [column]: !prev[column]
+    }))
+  }
+
   return (
     <div className="flex flex-col h-full gap-4">
       {/* --- Toolbar --- */}
@@ -103,6 +194,59 @@ export function DictionaryList({ onWordClick }: DictionaryListProps) {
               <SelectItem value={LearningStatus.Mastered}>Mastered</SelectItem>
             </SelectContent>
           </Select>
+
+          <Button onClick={onAddWord} className="bg-primary">
+            <PlusIcon className="h-4 w-4 mr-2" />
+            Add Word
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon">
+                <Settings2Icon className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuLabel>Column Visibility</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={columnVisibility.translation}
+                onCheckedChange={() => toggleColumnVisibility("translation")}
+              >
+                Translation
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={columnVisibility.meanings}
+                onCheckedChange={() => toggleColumnVisibility("meanings")}
+              >
+                Meanings
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={columnVisibility.partOfSpeech}
+                onCheckedChange={() => toggleColumnVisibility("partOfSpeech")}
+              >
+                Part of Speech
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={columnVisibility.status}
+                onCheckedChange={() => toggleColumnVisibility("status")}
+              >
+                Status
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={columnVisibility.tags}
+                onCheckedChange={() => toggleColumnVisibility("tags")}
+              >
+                Tags
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={columnVisibility.createdAt}
+                onCheckedChange={() => toggleColumnVisibility("createdAt")}
+              >
+                Created
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           
           <div className="text-sm text-muted-foreground whitespace-nowrap min-w-[80px] text-right">
             {totalCount} words
@@ -127,18 +271,79 @@ export function DictionaryList({ onWordClick }: DictionaryListProps) {
             <Table>
               <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableHead className="w-[200px]">Word</TableHead>
-                  <TableHead className="w-[250px]">Translation</TableHead>
-                  <TableHead className="w-[100px]">Part of Speech</TableHead>
-                  <TableHead className="w-[120px]">Status</TableHead>
-                  <TableHead>Tags</TableHead>
-                  <TableHead className="w-[150px]">Created</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
+                  <TableHead className="w-[200px]">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 -ml-3 hover:bg-transparent"
+                      onClick={() => handleSort("text")}
+                    >
+                      Word
+                      <ArrowUpDownIcon className="ml-2 h-4 w-4" />
+                    </Button>
+                  </TableHead>
+                  {columnVisibility.translation && (
+                    <TableHead className="w-[250px]">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 -ml-3 hover:bg-transparent"
+                        onClick={() => handleSort("translation")}
+                      >
+                        Translation
+                        <ArrowUpDownIcon className="ml-2 h-4 w-4" />
+                      </Button>
+                    </TableHead>
+                  )}
+                  {columnVisibility.meanings && (
+                    <TableHead className="w-[200px]">Meanings</TableHead>
+                  )}
+                  {columnVisibility.partOfSpeech && (
+                    <TableHead className="w-[100px]">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 -ml-3 hover:bg-transparent"
+                        onClick={() => handleSort("partOfSpeech")}
+                      >
+                        Part of Speech
+                        <ArrowUpDownIcon className="ml-2 h-4 w-4" />
+                      </Button>
+                    </TableHead>
+                  )}
+                  {columnVisibility.status && (
+                    <TableHead className="w-[120px]">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 -ml-3 hover:bg-transparent"
+                        onClick={() => handleSort("status")}
+                      >
+                        Status
+                        <ArrowUpDownIcon className="ml-2 h-4 w-4" />
+                      </Button>
+                    </TableHead>
+                  )}
+                  {columnVisibility.tags && (
+                    <TableHead>Tags</TableHead>
+                  )}
+                  {columnVisibility.createdAt && (
+                    <TableHead className="w-[150px]">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 -ml-3 hover:bg-transparent"
+                        onClick={() => handleSort("createdAt")}
+                      >
+                        Created
+                        <ArrowUpDownIcon className="ml-2 h-4 w-4" />
+                      </Button>
+                    </TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {words.map((word: any) => {
-                  // Берем основное значение (первое) для отображения в таблице
+                {sortedWords.map((word: any) => {
                   const mainMeaning = word.meanings?.[0];
                   const translation = mainMeaning?.translationRu?.[0] || mainMeaning?.translationRu || "—";
                   
@@ -156,48 +361,74 @@ export function DictionaryList({ onWordClick }: DictionaryListProps) {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm">
-                        {translation}
-                      </TableCell>
-                      <TableCell>
-                        {mainMeaning && (
-                          <Badge variant="outline" className="text-[10px] uppercase text-muted-foreground font-normal">
-                            {mainMeaning.partOfSpeech}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {mainMeaning && (
-                          <Badge 
-                            variant="outline" 
-                            className={`text-[10px] uppercase border-0 ${getStatusColorClass(mainMeaning.status)}`}
-                          >
-                            {mainMeaning.status}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1 flex-wrap">
-                          {mainMeaning?.tags?.slice(0, 2).map((tag: any) => (
-                            <span key={tag.id} className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-sm">
-                              #{tag.name}
-                            </span>
-                          ))}
-                          {mainMeaning?.tags?.length > 2 && (
-                            <span className="text-xs text-muted-foreground pl-1">
-                              +{mainMeaning.tags.length - 2}
-                            </span>
+                      {columnVisibility.translation && (
+                        <TableCell className="text-sm">
+                          {translation}
+                        </TableCell>
+                      )}
+                      {columnVisibility.meanings && (
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            {word.meanings?.map((meaning: any, idx: number) => {
+                              const meaningTranslation = meaning.translationRu?.[0] || meaning.translationRu || "—";
+                              return (
+                                <div key={meaning.id} className="text-xs">
+                                  <span className="text-muted-foreground">
+                                    {idx + 1}. {typeof meaningTranslation === "string" ? meaningTranslation : meaningTranslation[0] || "—"}
+                                  </span>
+                                  {meaning.partOfSpeech && (
+                                    <Badge variant="outline" className="ml-2 text-[9px] uppercase text-muted-foreground font-normal">
+                                      {meaning.partOfSpeech}
+                                    </Badge>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </TableCell>
+                      )}
+                      {columnVisibility.partOfSpeech && (
+                        <TableCell>
+                          {mainMeaning && (
+                            <Badge variant="outline" className="text-[10px] uppercase text-muted-foreground font-normal">
+                              {mainMeaning.partOfSpeech}
+                            </Badge>
                           )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(word.createdAt).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
+                        </TableCell>
+                      )}
+                      {columnVisibility.status && (
+                        <TableCell>
+                          {mainMeaning && (
+                            <Badge 
+                              variant="outline" 
+                              className={`text-[10px] uppercase border-0 ${getStatusColorClass(mainMeaning.status)}`}
+                            >
+                              {mainMeaning.status}
+                            </Badge>
+                          )}
+                        </TableCell>
+                      )}
+                      {columnVisibility.tags && (
+                        <TableCell>
+                          <div className="flex gap-1 flex-wrap">
+                            {mainMeaning?.tags?.slice(0, 2).map((tag: any) => (
+                              <span key={tag.id} className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-sm">
+                                #{tag.name}
+                              </span>
+                            ))}
+                            {mainMeaning?.tags?.length > 2 && (
+                              <span className="text-xs text-muted-foreground pl-1">
+                                +{mainMeaning.tags.length - 2}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                      )}
+                      {columnVisibility.createdAt && (
+                        <TableCell className="text-xs text-muted-foreground">
+                          {new Date(word.createdAt).toLocaleDateString()}
+                        </TableCell>
+                      )}
                     </TableRow>
                   )
                 })}

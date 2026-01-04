@@ -8,9 +8,12 @@ type Service struct {
 	tags         TagRepository
 	meaningTag   MeaningTagRepository
 	translations TranslationRepository
-	dictionary   DictionaryRepository
-	txRunner     TxRunner
-	repoFactory  RepositoryFactory
+
+	dictionary DictionaryRepository
+	fetcher    DictionaryFetcher // <-- Внешний источник данных
+
+	txRunner    TxRunner
+	repoFactory RepositoryFactory
 }
 
 // Deps — зависимости для создания сервиса.
@@ -22,8 +25,11 @@ type Deps struct {
 	MeaningTag   MeaningTagRepository
 	Translations TranslationRepository
 	Dictionary   DictionaryRepository
-	TxRunner     TxRunner
-	RepoFactory  RepositoryFactory
+
+	Fetcher DictionaryFetcher // <-- Инжектим реализацию клиента сюда
+
+	TxRunner    TxRunner
+	RepoFactory RepositoryFactory
 }
 
 // New создаёт новый сервис.
@@ -36,6 +42,7 @@ func New(deps Deps) *Service {
 		meaningTag:   deps.MeaningTag,
 		translations: deps.Translations,
 		dictionary:   deps.Dictionary,
+		fetcher:      deps.Fetcher, // <-- Сохраняем
 		txRunner:     deps.TxRunner,
 		repoFactory:  deps.RepoFactory,
 	}

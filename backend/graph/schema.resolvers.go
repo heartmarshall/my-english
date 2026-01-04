@@ -350,38 +350,57 @@ type wordResolver struct{ *Resolver }
 // !!! WARNING !!!
 // The code below was going to be deleted when updating resolvers. It has been copied here so you have
 // one last chance to move it out of harms way if you want. There are two reasons this happens:
-//   - When renaming or deleting a resolver the old code will be put in here. You can safely delete
-//     it when you're done.
-//   - You have helper methods in this file. Move them out to keep these resolver files clean.
-//
-// TranslationRu is the resolver for the translationRu field.
-func (r *meaningResolver) TranslationRu(ctx context.Context, obj *Meaning) ([]string, error) {
-	// Если значение уже установлено в объекте (из конвертера), возвращаем его
-	if len(obj.TranslationRu) > 0 {
-		return obj.TranslationRu, nil
-	}
-
-	// Загружаем translations из таблицы translations через DataLoader
-	meaningID, err := FromGraphQLID(obj.ID)
+//  - When renaming or deleting a resolver the old code will be put in here. You can safely delete
+//    it when you're done.
+//  - You have helper methods in this file. Move them out to keep these resolver files clean.
+/*
+	func (r *meaningResolver) SynonymsAntonyms(ctx context.Context, obj *Meaning) ([]*SynonymAntonym, error) {
+	// Загружаем word чтобы получить text
+	wordID, err := FromGraphQLID(obj.WordID)
 	if err != nil {
-		return nil, transport.NewGraphQLError(ctx, "Invalid meaning ID", transport.CodeInvalidInput)
+		return []*SynonymAntonym{}, nil
 	}
 
-	translations, err := LoadTranslationsForMeaning(ctx, meaningID)
+	wordWithRelations, err := r.words.GetByID(ctx, wordID)
 	if err != nil {
-		// Логируем ошибку, но возвращаем пустой массив вместо ошибки
-		// чтобы не ломать весь запрос
-		// TODO: исправить причину ошибки в DataLoader
-		return []string{}, nil
+		ctxlog.L(ctx).Error("error loading word for synonyms",
+			slog.Int64("wordID", wordID),
+			slog.String("error", err.Error()),
+		)
+		return []*SynonymAntonym{}, nil
 	}
 
-	// Преобразуем translations в массив строк
-	result := make([]string, 0, len(translations))
-	for _, tr := range translations {
-		if tr != nil && tr.TranslationRu != "" {
-			result = append(result, tr.TranslationRu)
-		}
+	// Конвертируем GraphQL PartOfSpeech в domain PartOfSpeech
+	partOfSpeech := FromGraphQLPartOfSpeech(obj.PartOfSpeech)
+
+	// Получаем синонимы/антонимы
+	relations, dictMeaningID, err := r.words.(*word.Service).GetDictionarySynonymsAntonymsByUserMeaning(
+		ctx,
+		wordWithRelations.Word.Text,
+		partOfSpeech,
+	)
+	if err != nil {
+		ctxlog.L(ctx).Error("error loading synonyms/antonyms",
+			slog.String("word", wordWithRelations.Word.Text),
+			slog.String("error", err.Error()),
+		)
+		return []*SynonymAntonym{}, nil
 	}
 
-	return result, nil
+	return ToGraphQLSynonymAntonyms(relations, dictMeaningID), nil
 }
+func (r *wordResolver) Forms(ctx context.Context, obj *Word) ([]*WordForm, error) {
+	// Получаем формы слова по тексту слова
+	forms, err := r.words.(*word.Service).GetWordForms(ctx, obj.Text)
+	if err != nil {
+		// Логируем ошибку, но возвращаем пустой массив
+		ctxlog.L(ctx).Error("error loading word forms",
+			slog.String("word", obj.Text),
+			slog.String("error", err.Error()),
+		)
+		return []*WordForm{}, nil
+	}
+
+	return ToGraphQLWordForms(forms), nil
+}
+*/

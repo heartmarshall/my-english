@@ -19,11 +19,18 @@ func (s *Service) GetDictionaryMeaningsByWordID(ctx context.Context, dictionaryW
 // Ищет соответствующее значение в словаре по тексту слова и части речи.
 func (s *Service) GetDictionarySynonymsAntonymsByUserMeaning(ctx context.Context, wordText string, partOfSpeech model.PartOfSpeech) ([]model.DictionarySynonymAntonym, int64, error) {
 	// Ищем слово в словаре
-	dictWord, err := s.dictionary.GetByText(ctx, wordText)
+	dictWords, err := s.dictionary.GetByText(ctx, wordText)
 	if err != nil {
 		// Если слово не найдено в словаре, возвращаем пустой список
 		return []model.DictionarySynonymAntonym{}, 0, nil
 	}
+
+	if len(dictWords) == 0 {
+		return []model.DictionarySynonymAntonym{}, 0, nil
+	}
+
+	// Берем первое найденное слово
+	dictWord := dictWords[0]
 
 	// Получаем значения для слова из словаря
 	dictMeanings, err := s.dictionary.GetMeaningsByWordID(ctx, dictWord.ID)
@@ -84,4 +91,3 @@ func (s *Service) GetDictionaryAntonyms(ctx context.Context, dictionaryMeaningID
 	}
 	return antonyms, nil
 }
-

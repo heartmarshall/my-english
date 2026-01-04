@@ -139,13 +139,16 @@ func ToGraphQLWord(w *model.Word, meanings []*Meaning) *Word {
 	if w == nil {
 		return nil
 	}
+	createdAt := Time(w.CreatedAt)
 	return &Word{
 		ID:            ToGraphQLID(w.ID),
 		Text:          w.Text,
 		Transcription: w.Transcription,
 		AudioURL:      w.AudioURL,
 		FrequencyRank: w.FrequencyRank,
+		CreatedAt:     &createdAt,
 		Meanings:      meanings,
+		// Forms загрузятся через field resolver
 	}
 }
 
@@ -173,7 +176,7 @@ func ToGraphQLMeaning(m *model.Meaning, translations []model.Translation, exampl
 			translationRuArray = append(translationRuArray, tr.TranslationRu)
 		}
 	}
-	
+
 	// Fallback на старое поле для обратной совместимости
 	if len(translationRuArray) == 0 && m.TranslationRu != "" {
 		translationRuArray = []string{m.TranslationRu}
@@ -286,12 +289,12 @@ func ToCreateMeaningInput(input *MeaningInput) word.CreateMeaningInput {
 	}
 
 	return word.CreateMeaningInput{
-		PartOfSpeech:  FromGraphQLPartOfSpeech(input.PartOfSpeech),
-		DefinitionEn:  input.DefinitionEn,
-		Translations:   translations,
-		ImageURL:      input.ImageURL,
-		Examples:      examples,
-		Tags:          input.Tags,
+		PartOfSpeech: FromGraphQLPartOfSpeech(input.PartOfSpeech),
+		DefinitionEn: input.DefinitionEn,
+		Translations: translations,
+		ImageURL:     input.ImageURL,
+		Examples:     examples,
+		Tags:         input.Tags,
 	}
 }
 
@@ -342,12 +345,12 @@ func ToUpdateMeaningInput(input *MeaningInput) word.UpdateMeaningInput {
 	}
 
 	return word.UpdateMeaningInput{
-		PartOfSpeech:  FromGraphQLPartOfSpeech(input.PartOfSpeech),
-		DefinitionEn:  input.DefinitionEn,
-		Translations:   translations,
-		ImageURL:      input.ImageURL,
-		Examples:      examples,
-		Tags:          input.Tags,
+		PartOfSpeech: FromGraphQLPartOfSpeech(input.PartOfSpeech),
+		DefinitionEn: input.DefinitionEn,
+		Translations: translations,
+		ImageURL:     input.ImageURL,
+		Examples:     examples,
+		Tags:         input.Tags,
 	}
 }
 
@@ -356,13 +359,13 @@ func ToWordFilter(filter *WordFilter) *word.WordFilter {
 	if filter == nil {
 		return nil
 	}
-	
+
 	var status *model.LearningStatus
 	if filter.Status != nil {
 		statusVal := FromGraphQLLearningStatus(*filter.Status)
 		status = &statusVal
 	}
-	
+
 	return &word.WordFilter{
 		Search: filter.Search,
 		Status: status,
@@ -437,7 +440,7 @@ func ToGraphQLMeaningBasic(m *model.Meaning, translations ...[]model.Translation
 			}
 		}
 	}
-	
+
 	// Fallback на старое поле для обратной совместимости
 	if len(translationRuArray) == 0 && m.TranslationRu != "" {
 		translationRuArray = []string{m.TranslationRu}
@@ -465,13 +468,15 @@ func ToGraphQLWordBasic(w *model.Word) *Word {
 	if w == nil {
 		return nil
 	}
+	createdAt := Time(w.CreatedAt)
 	return &Word{
 		ID:            ToGraphQLID(w.ID),
 		Text:          w.Text,
 		Transcription: w.Transcription,
 		AudioURL:      w.AudioURL,
 		FrequencyRank: w.FrequencyRank,
-		// Meanings загрузятся через field resolver
+		CreatedAt:     &createdAt,
+		// Meanings и Forms загрузятся через field resolvers
 	}
 }
 
@@ -505,10 +510,10 @@ func ToGraphQLInboxItem(item *model.InboxItem) *InboxItem {
 	}
 	t := Time(item.CreatedAt)
 	return &InboxItem{
-		ID:           ToGraphQLID(item.ID),
-		Text:         item.Text,
+		ID:            ToGraphQLID(item.ID),
+		Text:          item.Text,
 		SourceContext: item.SourceContext,
-		CreatedAt:    t,
+		CreatedAt:     t,
 	}
 }
 
@@ -549,6 +554,7 @@ func ToGraphQLSuggestion(s *word.Suggestion) *Suggestion {
 		Text:           s.Text,
 		Transcription:  s.Transcription,
 		Translations:   s.Translations,
+		Definition:     s.Definition, // <-- Маппим новое поле
 		Origin:         origin,
 		ExistingWordID: existingWordID,
 	}
@@ -559,6 +565,74 @@ func ToGraphQLSuggestions(suggestions []word.Suggestion) []*Suggestion {
 	result := make([]*Suggestion, 0, len(suggestions))
 	for i := range suggestions {
 		result = append(result, ToGraphQLSuggestion(&suggestions[i]))
+	}
+	return result
+}
+
+// --- WordForm Conversion ---
+
+// ToGraphQLWordForm конвертирует domain DictionaryWordForm в GraphQL WordForm.
+func ToGraphQLWordForm(f *model.DictionaryWordForm) *WordForm {
+	if f == nil {
+		return nil
+	}
+	return &WordForm{
+		ID:       ToGraphQLID(f.ID),
+		FormText: f.FormText,
+		FormType: f.FormType,
+	}
+}
+
+// ToGraphQLWordForms конвертирует slice DictionaryWordForm в GraphQL WordForms.
+func ToGraphQLWordForms(forms []model.DictionaryWordForm) []*WordForm {
+	result := make([]*WordForm, 0, len(forms))
+	for i := range forms {
+		result = append(result, ToGraphQLWordForm(&forms[i]))
+	}
+	return result
+}
+
+// --- SynonymAntonym Conversion ---
+
+// ToGraphQLRelationType конвертирует domain RelationType в GraphQL RelationType.
+func ToGraphQLRelationType(rt model.RelationType) RelationType {
+	switch rt {
+	case model.RelationTypeSynonym:
+		return RelationTypeSynonym
+	case model.RelationTypeAntonym:
+		return RelationTypeAntonym
+	default:
+		return RelationTypeSynonym
+	}
+}
+
+// ToGraphQLSynonymAntonym конвертирует domain DictionarySynonymAntonym в GraphQL SynonymAntonym.
+// meaningID - ID текущего значения, чтобы определить relatedMeaningId
+func ToGraphQLSynonymAntonym(sa *model.DictionarySynonymAntonym, currentMeaningID int64) *SynonymAntonym {
+	if sa == nil {
+		return nil
+	}
+
+	// Определяем relatedMeaningId - это другой meaning (не текущий)
+	var relatedMeaningID int64
+	if sa.MeaningID1 == currentMeaningID {
+		relatedMeaningID = sa.MeaningID2
+	} else {
+		relatedMeaningID = sa.MeaningID1
+	}
+
+	return &SynonymAntonym{
+		ID:               ToGraphQLID(sa.ID),
+		RelatedMeaningID: ToGraphQLID(relatedMeaningID),
+		RelationType:     ToGraphQLRelationType(sa.RelationType),
+	}
+}
+
+// ToGraphQLSynonymAntonyms конвертирует slice DictionarySynonymAntonym в GraphQL SynonymAntonyms.
+func ToGraphQLSynonymAntonyms(relations []model.DictionarySynonymAntonym, currentMeaningID int64) []*SynonymAntonym {
+	result := make([]*SynonymAntonym, 0, len(relations))
+	for i := range relations {
+		result = append(result, ToGraphQLSynonymAntonym(&relations[i], currentMeaningID))
 	}
 	return result
 }

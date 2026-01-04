@@ -6,33 +6,31 @@ import (
 )
 
 // Suggest возвращает подсказки для автокомплита.
-// Ищет в локальном словаре пользователя и во внутреннем словаре (dictionary_words).
-// Приоритет: локальный словарь > внутренний словарь.
 func (s *Service) Suggest(ctx context.Context, query string) ([]Suggestion, error) {
 	query = strings.TrimSpace(strings.ToLower(query))
 	if query == "" {
 		return []Suggestion{}, nil
 	}
 
-	// Сначала ищем в локальном словаре
+	// 1. Сначала ищем в локальном словаре пользователя
 	localSuggestions, err := s.suggestFromLocal(ctx, query)
 	if err != nil {
 		return []Suggestion{}, err
 	}
 
-	// Если найдено точное совпадение в локальном словаре, возвращаем только его
+	// Если найдено точное совпадение у пользователя, это приоритет
 	if len(localSuggestions) > 0 && localSuggestions[0].ExistingWordID != nil {
 		return localSuggestions, nil
 	}
 
-	// Ищем во внутреннем словаре
+	// 2. Ищем во внешнем/системном словаре
 	dictionarySuggestions, err := s.suggestFromDictionary(ctx, query)
 	if err != nil {
-		// Логируем ошибку, но продолжаем с результатами из локального словаря
-		// TODO: добавить логирование
+		// Логируем ошибку, но не прерываем работу, если есть локальные подсказки
+		// slog.Error("failed to fetch from dictionary", "error", err)
 	}
 
-	// Объединяем результаты: сначала локальные, потом из словаря
+	// Объединяем результаты
 	suggestions := make([]Suggestion, 0, len(localSuggestions)+len(dictionarySuggestions))
 	suggestions = append(suggestions, localSuggestions...)
 	suggestions = append(suggestions, dictionarySuggestions...)
@@ -40,8 +38,72 @@ func (s *Service) Suggest(ctx context.Context, query string) ([]Suggestion, erro
 	return suggestions, nil
 }
 
-// suggestFromLocal ищет подсказки в локальном словаре пользователя.
+// suggestFromDictionary реализует логику Read-Through Cache.
+func (s *Service) suggestFromDictionary(ctx context.Context, query string) ([]Suggestion, error) {
+	// А. Ищем в кэше (БД)
+	cachedWords, err := s.dictionary.GetByText(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	// Б. Если в кэше пусто, идем во внешний мир
+	if len(cachedWords) == 0 {
+		if s.fetcher != nil {
+			externalData, err := s.fetcher.FetchWord(ctx, query)
+			if err != nil {
+				// Ошибка внешнего API не должна ломать приложение, просто идем дальше
+				// (можно добавить логирование)
+			} else if externalData != nil {
+				// Сохраняем в БД (Write-through)
+				if err := s.dictionary.SaveWordData(ctx, externalData); err == nil {
+					// Добавляем сохраненное слово в список для отображения
+					cachedWords = append(cachedWords, externalData.Word)
+				}
+			}
+		}
+	}
+
+	// В. Если все еще пусто — пробуем нечеткий поиск по кэшу (на случай опечаток)
+	if len(cachedWords) == 0 {
+		cachedWords, err = s.dictionary.SearchSimilar(ctx, query, 5, 0.3)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Г. Формируем DTO для ответа
+	suggestions := make([]Suggestion, 0, len(cachedWords))
+	for _, dw := range cachedWords {
+		// 1. Получаем переводы (как и раньше)
+		translations, err := s.getDictionaryTranslations(ctx, dw.ID)
+		if err != nil {
+			continue
+		}
+
+		// 2. Получаем определение (НОВОЕ)
+		var definition *string
+		meanings, err := s.dictionary.GetMeaningsByWordID(ctx, dw.ID)
+		if err == nil && len(meanings) > 0 {
+			// Берем определение из первого значения
+			definition = meanings[0].DefinitionEn
+		}
+
+		suggestions = append(suggestions, Suggestion{
+			Text:           dw.Text,
+			Transcription:  dw.Transcription,
+			Translations:   translations,
+			Definition:     definition, // <-- Заполняем
+			Origin:         "DICTIONARY",
+			ExistingWordID: nil,
+		})
+	}
+
+	return suggestions, nil
+}
+
+// suggestFromLocal (остается без изменений из предыдущей версии)
 func (s *Service) suggestFromLocal(ctx context.Context, query string) ([]Suggestion, error) {
+	// ... см. предыдущую реализацию ...
 	// Пытаемся найти точное совпадение
 	wordWithRelations, err := s.GetByText(ctx, query)
 	if err == nil {
@@ -65,12 +127,19 @@ func (s *Service) suggestFromLocal(ctx context.Context, query string) ([]Suggest
 			return []Suggestion{}, nil
 		}
 
+		// Получаем определение из первого значения
+		var definition *string
+		if len(wordWithRelations.Meanings) > 0 && wordWithRelations.Meanings[0].Meaning.DefinitionEn != nil {
+			definition = wordWithRelations.Meanings[0].Meaning.DefinitionEn
+		}
+
 		existingWordID := wordWithRelations.Word.ID
 		return []Suggestion{
 			{
 				Text:           wordWithRelations.Word.Text,
 				Transcription:  wordWithRelations.Word.Transcription,
 				Translations:   translations,
+				Definition:     definition,
 				Origin:         "LOCAL",
 				ExistingWordID: &existingWordID,
 			},
@@ -128,11 +197,18 @@ func (s *Service) suggestFromLocal(ctx context.Context, query string) ([]Suggest
 			continue
 		}
 
+		// Получаем определение из первого значения
+		var definition *string
+		if len(meanings) > 0 && meanings[0].DefinitionEn != nil {
+			definition = meanings[0].DefinitionEn
+		}
+
 		existingWordID := w.ID
 		suggestions = append(suggestions, Suggestion{
 			Text:           w.Text,
 			Transcription:  w.Transcription,
 			Translations:   translations,
+			Definition:     definition,
 			Origin:         "LOCAL",
 			ExistingWordID: &existingWordID,
 		})
@@ -141,68 +217,7 @@ func (s *Service) suggestFromLocal(ctx context.Context, query string) ([]Suggest
 	return suggestions, nil
 }
 
-// suggestFromDictionary ищет подсказки во внутреннем словаре.
-func (s *Service) suggestFromDictionary(ctx context.Context, query string) ([]Suggestion, error) {
-	// Пытаемся найти точное совпадение во внутреннем словаре
-	dictWord, err := s.dictionary.GetByText(ctx, query)
-	if err == nil {
-		// Найдено во внутреннем словаре
-		translations, err := s.getDictionaryTranslations(ctx, dictWord.ID)
-		if err != nil {
-			return []Suggestion{}, err
-		}
-
-		if len(translations) == 0 {
-			return []Suggestion{}, nil
-		}
-
-		return []Suggestion{
-			{
-				Text:          dictWord.Text,
-				Transcription: dictWord.Transcription,
-				Translations:  translations,
-				Origin:        "DICTIONARY",
-				// ExistingWordID = nil, так как это не слово пользователя
-			},
-		}, nil
-	}
-
-	// Если не найдено точное совпадение, используем триграммный поиск
-	dictWords, err := s.dictionary.SearchSimilar(ctx, query, 5, 0.3)
-	if err != nil {
-		return []Suggestion{}, err
-	}
-
-	if len(dictWords) == 0 {
-		return []Suggestion{}, nil
-	}
-
-	// Для найденных слов загружаем meanings и формируем подсказки
-	suggestions := make([]Suggestion, 0, len(dictWords))
-	for _, dw := range dictWords {
-		translations, err := s.getDictionaryTranslations(ctx, dw.ID)
-		if err != nil {
-			continue
-		}
-
-		// Пропускаем слова без переводов
-		if len(translations) == 0 {
-			continue
-		}
-
-		suggestions = append(suggestions, Suggestion{
-			Text:          dw.Text,
-			Transcription: dw.Transcription,
-			Translations:  translations,
-			Origin:        "DICTIONARY",
-			// ExistingWordID = nil, так как это не слово пользователя
-		})
-	}
-
-	return suggestions, nil
-}
-
-// getDictionaryTranslations загружает переводы для слова из внутреннего словаря.
+// getDictionaryTranslations (вспомогательный метод для загрузки переводов)
 func (s *Service) getDictionaryTranslations(ctx context.Context, wordID int64) ([]string, error) {
 	// Загружаем meanings для слова
 	meanings, err := s.dictionary.GetMeaningsByWordID(ctx, wordID)
@@ -236,4 +251,3 @@ func (s *Service) getDictionaryTranslations(ctx context.Context, wordID int64) (
 
 	return translations, nil
 }
-
