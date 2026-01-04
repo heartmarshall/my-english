@@ -1,6 +1,6 @@
 Содержимое директории: /home/alodi/playground/my-english/backend_v2
-Всего файлов собрано: 63
-Пропущено файлов: 1
+Всего файлов собрано: 74
+Пропущено файлов: 2
 
 ================================================================================
 
@@ -781,10 +781,17 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/pashagolub/pgxmock/v2 v2.12.0
 	github.com/vektah/gqlparser/v2 v2.5.31
+	github.com/vikstrous/dataloadgen v0.0.10
+	golang.org/x/sync v0.19.0
 )
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
+	github.com/agnivade/levenshtein v1.2.1 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
@@ -796,7 +803,8 @@ require (
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/sosodev/duration v1.3.1 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	golang.org/x/sync v0.19.0 // indirect
+	go.opentelemetry.io/otel v1.11.1 // indirect
+	go.opentelemetry.io/otel/trace v1.11.1 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	olympos.io/encoding/edn v0.0.0-20201019073823-d3554ca0b0a3 // indirect
@@ -853,6 +861,1206 @@ models:
         resolver: true
       tags:
         resolver: true
+
+
+================================================================================
+
+================================================================================
+Файл: graph/dataloader.go
+Полный путь: /home/alodi/playground/my-english/backend_v2/graph/dataloader.go
+================================================================================
+
+package graph
+
+import (
+	"context"
+	"net/http"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/heartmarshall/my-english/internal/model"
+	"github.com/heartmarshall/my-english/internal/service/loader"
+	"github.com/vikstrous/dataloadgen"
+)
+
+// Loaders содержит все доступные DataLoaders.
+type Loaders struct {
+	SensesByLexemeID         *dataloadgen.Loader[uuid.UUID, []model.Sense]
+	PronunciationsByLexemeID *dataloadgen.Loader[uuid.UUID, []model.Pronunciation]
+	TranslationsBySenseID    *dataloadgen.Loader[uuid.UUID, []model.SenseTranslation]
+	ExamplesBySenseID        *dataloadgen.Loader[uuid.UUID, []model.Example]
+	SRSByCardID              *dataloadgen.Loader[uuid.UUID, *model.SRSState] // 1:1 связь, поэтому указатель
+	TagsByCardID             *dataloadgen.Loader[uuid.UUID, []model.Tag]
+	SensesByID               *dataloadgen.Loader[uuid.UUID, *model.Sense]          // Для Card.sense
+	LexemesByID              *dataloadgen.Loader[uuid.UUID, *model.Lexeme]         // Для Sense.lexeme
+	DataSourcesByID          *dataloadgen.Loader[int, *model.DataSource]           // Для Source полей
+	ReviewCountByCardID      *dataloadgen.Loader[uuid.UUID, int]                   // Для CardProgress.reviewCount
+	RelationsBySenseID       *dataloadgen.Loader[uuid.UUID, []model.SenseRelation] // Для Sense.relations
+}
+
+// NewLoaders инициализирует лоадеры.
+func NewLoaders(svc *loader.Service) *Loaders {
+	return &Loaders{
+		SensesByLexemeID: dataloadgen.NewLoader(
+			buildGroupedBatcher(svc.GetSensesByLexemeIDs, func(item model.Sense) uuid.UUID { return item.LexemeID }),
+			dataloadgen.WithWait(2*time.Millisecond),
+		),
+		PronunciationsByLexemeID: dataloadgen.NewLoader(
+			buildGroupedBatcher(svc.GetPronunciationsByLexemeIDs, func(item model.Pronunciation) uuid.UUID { return item.LexemeID }),
+			dataloadgen.WithWait(2*time.Millisecond),
+		),
+		TranslationsBySenseID: dataloadgen.NewLoader(
+			buildGroupedBatcher(svc.GetTranslationsBySenseIDs, func(item model.SenseTranslation) uuid.UUID { return item.SenseID }),
+			dataloadgen.WithWait(2*time.Millisecond),
+		),
+		ExamplesBySenseID: dataloadgen.NewLoader(
+			buildGroupedBatcher(svc.GetExamplesBySenseIDs, func(item model.Example) uuid.UUID {
+				if item.SenseID == nil {
+					return uuid.Nil
+				}
+				return *item.SenseID
+			}),
+			dataloadgen.WithWait(2*time.Millisecond),
+		),
+		SRSByCardID: dataloadgen.NewLoader(
+			buildOneToOneBatcher(svc.GetSRSByCardIDs, func(item model.SRSState) uuid.UUID { return item.CardID }),
+			dataloadgen.WithWait(2*time.Millisecond),
+		),
+		TagsByCardID: dataloadgen.NewLoader(
+			func(ctx context.Context, keys []uuid.UUID) ([][]model.Tag, []error) {
+				// У тегов сложная логика в сервисе (возвращает Map), поэтому отдельная функция-адаптер
+				tagsMap, err := svc.GetTagsByCardIDs(ctx, keys)
+				if err != nil {
+					// Возвращаем ошибку для всех ключей
+					errs := make([]error, len(keys))
+					for i := range errs {
+						errs[i] = err
+					}
+					return nil, errs
+				}
+
+				// Мапим результаты в порядке ключей
+				result := make([][]model.Tag, len(keys))
+				for i, key := range keys {
+					result[i] = tagsMap[key] // вернет nil (empty slice) если нет в мапе, это ок
+				}
+				return result, nil
+			},
+			dataloadgen.WithWait(2*time.Millisecond),
+		),
+		SensesByID: dataloadgen.NewLoader(
+			buildOneToOneBatcher(svc.GetSensesByIDs, func(item model.Sense) uuid.UUID { return item.ID }),
+			dataloadgen.WithWait(2*time.Millisecond),
+		),
+		LexemesByID: dataloadgen.NewLoader(
+			buildOneToOneBatcher(svc.GetLexemesByIDs, func(item model.Lexeme) uuid.UUID { return item.ID }),
+			dataloadgen.WithWait(2*time.Millisecond),
+		),
+		DataSourcesByID: dataloadgen.NewLoader(
+			func(ctx context.Context, keys []int) ([]*model.DataSource, []error) {
+				sources, err := svc.GetDataSourcesByIDs(ctx, keys)
+				if err != nil {
+					errs := make([]error, len(keys))
+					for i := range errs {
+						errs[i] = err
+					}
+					return nil, errs
+				}
+
+				// Мапим по ID
+				mapped := make(map[int]*model.DataSource)
+				for i := range sources {
+					mapped[sources[i].ID] = &sources[i]
+				}
+
+				// Расставляем
+				result := make([]*model.DataSource, len(keys))
+				for i, key := range keys {
+					if source, ok := mapped[key]; ok {
+						result[i] = source
+					} else {
+						result[i] = nil
+					}
+				}
+				return result, nil
+			},
+			dataloadgen.WithWait(2*time.Millisecond),
+		),
+		ReviewCountByCardID: dataloadgen.NewLoader(
+			func(ctx context.Context, keys []uuid.UUID) ([]int, []error) {
+				countsMap, err := svc.GetReviewCountByCardIDs(ctx, keys)
+				if err != nil {
+					errs := make([]error, len(keys))
+					for i := range errs {
+						errs[i] = err
+					}
+					return nil, errs
+				}
+
+				result := make([]int, len(keys))
+				for i, key := range keys {
+					result[i] = countsMap[key]
+				}
+				return result, nil
+			},
+			dataloadgen.WithWait(2*time.Millisecond),
+		),
+		RelationsBySenseID: dataloadgen.NewLoader(
+			buildGroupedBatcher(svc.GetRelationsBySenseIDs, func(item model.SenseRelation) uuid.UUID { return item.SourceSenseID }),
+			dataloadgen.WithWait(2*time.Millisecond),
+		),
+	}
+}
+
+// --- Helpers для создания batch-функций ---
+
+// buildGroupedBatcher создает функцию для One-to-Many связей (например, Lexeme -> Senses).
+// fetcher: функция сервиса, возвращающая плоский список всех найденных элементов.
+// getKey: функция, извлекающая Foreign Key из элемента.
+func buildGroupedBatcher[V any](
+	fetcher func(context.Context, []uuid.UUID) ([]V, error),
+	getKey func(V) uuid.UUID,
+) func(context.Context, []uuid.UUID) ([][]V, []error) {
+	return func(ctx context.Context, keys []uuid.UUID) ([][]V, []error) {
+		items, err := fetcher(ctx, keys)
+		if err != nil {
+			errs := make([]error, len(keys))
+			for i := range errs {
+				errs[i] = err
+			}
+			return nil, errs
+		}
+
+		// Группируем по ключу
+		grouped := make(map[uuid.UUID][]V)
+		for _, item := range items {
+			key := getKey(item)
+			grouped[key] = append(grouped[key], item)
+		}
+
+		// Расставляем в порядке запроса
+		result := make([][]V, len(keys))
+		for i, key := range keys {
+			result[i] = grouped[key]
+		}
+		return result, nil
+	}
+}
+
+// buildOneToOneBatcher создает функцию для One-to-One связей (например, Card -> SRSState).
+func buildOneToOneBatcher[V any](
+	fetcher func(context.Context, []uuid.UUID) ([]V, error),
+	getKey func(V) uuid.UUID,
+) func(context.Context, []uuid.UUID) ([]*V, []error) {
+	return func(ctx context.Context, keys []uuid.UUID) ([]*V, []error) {
+		items, err := fetcher(ctx, keys)
+		if err != nil {
+			errs := make([]error, len(keys))
+			for i := range errs {
+				errs[i] = err
+			}
+			return nil, errs
+		}
+
+		// Мапим по ключу
+		mapped := make(map[uuid.UUID]V)
+		for _, item := range items {
+			mapped[getKey(item)] = item
+		}
+
+		// Расставляем
+		result := make([]*V, len(keys))
+		for i, key := range keys {
+			if item, ok := mapped[key]; ok {
+				result[i] = &item // Берем адрес копии, так как V - структура
+			} else {
+				result[i] = nil
+			}
+		}
+		return result, nil
+	}
+}
+
+// --- Context Middleware ---
+
+type ctxKey string
+
+const loadersKey = ctxKey("dataloaders")
+
+// Middleware инжектит лоадеры в контекст запроса.
+func Middleware(svc *loader.Service) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			loaders := NewLoaders(svc)
+			ctx := context.WithValue(r.Context(), loadersKey, loaders)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// For возвращает лоадеры из контекста.
+func For(ctx context.Context) *Loaders {
+	return ctx.Value(loadersKey).(*Loaders)
+}
+
+
+================================================================================
+
+================================================================================
+Файл: graph/mappers.go
+Полный путь: /home/alodi/playground/my-english/backend_v2/graph/mappers.go
+================================================================================
+
+package graph
+
+import (
+	"strconv"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/heartmarshall/my-english/internal/model"
+	"github.com/heartmarshall/my-english/internal/service/card"
+	"github.com/heartmarshall/my-english/internal/service/study"
+)
+
+// toGraphQLCard конвертирует model.Card в GraphQL Card.
+func toGraphQLCard(m *model.Card) *Card {
+	if m == nil {
+		return nil
+	}
+
+	return &Card{
+		ID:                  m.ID.String(),
+		CustomText:          m.CustomText,
+		CustomTranscription: m.CustomTranscription,
+		CustomTranslations:  m.CustomTranslations,
+		CustomNote:          m.CustomNote,
+		CustomImageURL:      m.CustomImageURL,
+		CreatedAt:           m.CreatedAt,
+		// Sense, Progress, Tags будут загружены через field resolvers
+	}
+}
+
+// toGraphQLLexeme конвертирует model.Lexeme в GraphQL Lexeme.
+func toGraphQLLexeme(m *model.Lexeme) *Lexeme {
+	if m == nil {
+		return nil
+	}
+
+	return &Lexeme{
+		ID:   m.ID.String(),
+		Text: m.TextDisplay,
+		// Pronunciations, Senses, Inflections, Lemma будут загружены через field resolvers
+	}
+}
+
+// toGraphQLSense конвертирует model.Sense в GraphQL Sense.
+func toGraphQLSense(m *model.Sense) *Sense {
+	if m == nil {
+		return nil
+	}
+
+	pos := toGraphQLPartOfSpeech(model.PartOfSpeech(m.PartOfSpeech))
+
+	return &Sense{
+		ID:           m.ID.String(),
+		PartOfSpeech: pos,
+		Definition:   m.Definition,
+		CefrLevel:    m.CefrLevel,
+		// Lexeme, Source, Translations, Examples, Relations будут загружены через field resolvers
+	}
+}
+
+// toGraphQLInboxItem конвертирует model.InboxItem в GraphQL InboxItem.
+func toGraphQLInboxItem(m *model.InboxItem) *InboxItem {
+	if m == nil {
+		return nil
+	}
+
+	return &InboxItem{
+		ID:        m.ID.String(),
+		Text:      m.RawText,
+		Context:   m.ContextNote,
+		CreatedAt: m.CreatedAt,
+	}
+}
+
+// toGraphQLTag конвертирует model.Tag в GraphQL Tag.
+func toGraphQLTag(m *model.Tag) *Tag {
+	if m == nil {
+		return nil
+	}
+
+	return &Tag{
+		ID:    strconv.Itoa(m.ID), // Tag.ID в модели - int, в GraphQL - string
+		Name:  m.Name,
+		Color: m.ColorHex,
+	}
+}
+
+// toGraphQLPartOfSpeech конвертирует model.PartOfSpeech в GraphQL PartOfSpeech.
+func toGraphQLPartOfSpeech(pos model.PartOfSpeech) PartOfSpeech {
+	switch pos {
+	case model.PartOfSpeechNoun:
+		return PartOfSpeechNoun
+	case model.PartOfSpeechVerb:
+		return PartOfSpeechVerb
+	case model.PartOfSpeechAdjective:
+		return PartOfSpeechAdjective
+	case model.PartOfSpeechAdverb:
+		return PartOfSpeechAdverb
+	case model.PartOfSpeechPronoun:
+		return PartOfSpeechPronoun
+	case model.PartOfSpeechPreposition:
+		return PartOfSpeechPreposition
+	case model.PartOfSpeechConjunction:
+		return PartOfSpeechConjunction
+	case model.PartOfSpeechInterjection:
+		return PartOfSpeechInterjection
+	case model.PartOfSpeechPhrase:
+		return PartOfSpeechPhrase
+	case model.PartOfSpeechIdiom:
+		return PartOfSpeechIdiom
+	case model.PartOfSpeechOther:
+		return PartOfSpeechOther
+	default:
+		return PartOfSpeechOther
+	}
+}
+
+// toGraphQLLearningStatus конвертирует model.LearningStatus в GraphQL LearningStatus.
+func toGraphQLLearningStatus(status model.LearningStatus) LearningStatus {
+	switch status {
+	case model.LearningStatusNew:
+		return LearningStatusNew
+	case model.LearningStatusLearning:
+		return LearningStatusLearning
+	case model.LearningStatusReview:
+		return LearningStatusReview
+	case model.LearningStatusMastered:
+		return LearningStatusMastered
+	default:
+		return LearningStatusNew
+	}
+}
+
+// toModelLearningStatus конвертирует GraphQL LearningStatus в model.LearningStatus.
+func toModelLearningStatus(status LearningStatus) model.LearningStatus {
+	switch status {
+	case LearningStatusNew:
+		return model.LearningStatusNew
+	case LearningStatusLearning:
+		return model.LearningStatusLearning
+	case LearningStatusReview:
+		return model.LearningStatusReview
+	case LearningStatusMastered:
+		return model.LearningStatusMastered
+	default:
+		return model.LearningStatusNew
+	}
+}
+
+// toModelCreateCardInput конвертирует GraphQL CreateCardInput в card.CreateCardInput.
+func toModelCreateCardInput(input CreateCardInput) card.CreateCardInput {
+	var senseID *uuid.UUID
+	if input.SenseID != nil {
+		id, _ := uuid.Parse(*input.SenseID)
+		senseID = &id
+	}
+
+	return card.CreateCardInput{
+		SenseID:             senseID,
+		CustomText:          input.CustomText,
+		CustomTranscription: input.Transcription,
+		CustomTranslations:  input.Translations,
+		CustomNote:          input.Note,
+		CustomImageURL:      nil, // Не поддерживается в GraphQL схеме
+		Tags:                input.Tags,
+	}
+}
+
+// toModelUpdateCardInput конвертирует GraphQL UpdateCardInput в card.UpdateCardInput.
+func toModelUpdateCardInput(input UpdateCardInput) card.UpdateCardInput {
+	return card.UpdateCardInput{
+		CustomTranscription: input.CustomTranscription,
+		CustomTranslations:  input.CustomTranslations,
+		CustomNote:          input.CustomNote,
+		CustomImageURL:      nil, // Не поддерживается в GraphQL схеме
+		Tags:                input.Tags,
+	}
+}
+
+// parseUUID парсит строку в UUID.
+func parseUUID(s string) (uuid.UUID, error) {
+	return uuid.Parse(s)
+}
+
+// calculateNextReviewInDays вычисляет количество дней до следующего повторения.
+func calculateNextReviewInDays(dueDate *time.Time) float64 {
+	if dueDate == nil {
+		return 0
+	}
+	now := time.Now()
+	diff := dueDate.Sub(now)
+	return diff.Hours() / 24.0
+}
+
+// toGraphQLDataSource конвертирует model.DataSource в GraphQL DataSource.
+func toGraphQLDataSource(m *model.DataSource) *DataSource {
+	if m == nil {
+		return nil
+	}
+
+	return &DataSource{
+		ID:          strconv.Itoa(m.ID), // DataSource.ID в модели - int, в GraphQL - string
+		Slug:        m.Slug,
+		DisplayName: m.DisplayName,
+		TrustLevel:  m.TrustLevel,
+		WebsiteURL:  m.WebsiteURL,
+	}
+}
+
+// toGraphQLMorphologicalType конвертирует model.MorphologicalType в GraphQL MorphologicalType.
+func toGraphQLMorphologicalType(mt model.MorphologicalType) MorphologicalType {
+	switch mt {
+	case model.MorphTypePlural:
+		return MorphologicalTypePlural
+	case model.MorphTypePastTense:
+		return MorphologicalTypePastTense
+	case model.MorphTypePastParticiple:
+		return MorphologicalTypePastParticiple
+	case model.MorphTypePresentParticiple:
+		return MorphologicalTypePresentParticiple
+	case model.MorphTypeComparative:
+		return MorphologicalTypeComparative
+	case model.MorphTypeSuperlative:
+		return MorphologicalTypeSuperlative
+	default:
+		return MorphologicalTypePlural
+	}
+}
+
+// toGraphQLRelationType конвертирует model.RelationType в GraphQL RelationType.
+func toGraphQLRelationType(rt model.RelationType) RelationType {
+	switch rt {
+	case model.RelationTypeSynonym:
+		return RelationTypeSynonym
+	case model.RelationTypeAntonym:
+		return RelationTypeAntonym
+	case model.RelationTypeRelated:
+		return RelationTypeRelated
+	case model.RelationTypeCollocation:
+		return RelationTypeCollocation
+	default:
+		return RelationTypeRelated
+	}
+}
+
+// toGraphQLSenseRelation конвертирует model.SenseRelation в GraphQL SenseRelation.
+// targetSense должен быть загружен отдельно через DataLoader.
+func toGraphQLSenseRelation(m *model.SenseRelation, targetSense *Sense) *SenseRelation {
+	if m == nil {
+		return nil
+	}
+
+	return &SenseRelation{
+		Sense:           targetSense,
+		Type:            toGraphQLRelationType(model.RelationType(m.Type)),
+		IsBidirectional: m.IsBidirectional,
+	}
+}
+
+// toModelCardFilter конвертирует GraphQL CardsFilter в card.Filter.
+func toModelCardFilter(filter *CardsFilter) *card.Filter {
+	if filter == nil {
+		return nil
+	}
+
+	var statuses []model.LearningStatus
+	if len(filter.Statuses) > 0 {
+		statuses = make([]model.LearningStatus, len(filter.Statuses))
+		for i, s := range filter.Statuses {
+			statuses[i] = toModelLearningStatus(s)
+		}
+	}
+
+	return &card.Filter{
+		Search:   filter.Search,
+		Tags:     filter.Tags,
+		Statuses: statuses,
+	}
+}
+
+// toModelStudyFilter конвертирует GraphQL StudyFilter в study.Filter.
+func toModelStudyFilter(filter *StudyFilter) *study.Filter {
+	if filter == nil {
+		return nil
+	}
+
+	var statuses []model.LearningStatus
+	if len(filter.Statuses) > 0 {
+		statuses = make([]model.LearningStatus, len(filter.Statuses))
+		for i, s := range filter.Statuses {
+			statuses[i] = toModelLearningStatus(s)
+		}
+	}
+
+	return &study.Filter{
+		Tags:     filter.Tags,
+		Statuses: statuses,
+	}
+}
+
+
+================================================================================
+
+================================================================================
+Файл: graph/models_gen.go
+Полный путь: /home/alodi/playground/my-english/backend_v2/graph/models_gen.go
+================================================================================
+
+// Code generated by github.com/99designs/gqlgen, DO NOT EDIT.
+
+package graph
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"strconv"
+	"time"
+)
+
+// Личная карточка (Card).
+// Связывает пользователя и Sense, хранит прогресс и личные правки.
+type Card struct {
+	ID                  string        `json:"id"`
+	Sense               *Sense        `json:"sense,omitempty"`
+	CustomText          *string       `json:"customText,omitempty"`
+	CustomTranscription *string       `json:"customTranscription,omitempty"`
+	CustomTranslations  []string      `json:"customTranslations,omitempty"`
+	CustomNote          *string       `json:"customNote,omitempty"`
+	CustomImageURL      *string       `json:"customImageUrl,omitempty"`
+	Progress            *CardProgress `json:"progress"`
+	Tags                []*Tag        `json:"tags"`
+	CreatedAt           time.Time     `json:"createdAt"`
+}
+
+// Состояние изучения и статистика.
+// Соответствует таблице 'srs_states'.
+type CardProgress struct {
+	Status        LearningStatus `json:"status"`
+	NextReviewAt  *time.Time     `json:"nextReviewAt,omitempty"`
+	ReviewCount   int            `json:"reviewCount"`
+	LastReviewAt  *time.Time     `json:"lastReviewAt,omitempty"`
+	AlgorithmData map[string]any `json:"algorithmData"`
+}
+
+type CardsFilter struct {
+	Search   *string          `json:"search,omitempty"`
+	Tags     []string         `json:"tags,omitempty"`
+	Statuses []LearningStatus `json:"statuses,omitempty"`
+}
+
+// Входные данные для создания карточки.
+type CreateCardInput struct {
+	SenseID       *string  `json:"senseId,omitempty"`
+	CustomText    *string  `json:"customText,omitempty"`
+	Translations  []string `json:"translations"`
+	Note          *string  `json:"note,omitempty"`
+	Transcription *string  `json:"transcription,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
+}
+
+type DashboardStats struct {
+	TotalCards    int `json:"totalCards"`
+	MasteredCount int `json:"masteredCount"`
+	LearningCount int `json:"learningCount"`
+	DueCount      int `json:"dueCount"`
+}
+
+// Источник данных (Oxford, FreeDict, User Manual, AI).
+type DataSource struct {
+	ID          string  `json:"id"`
+	Slug        string  `json:"slug"`
+	DisplayName string  `json:"displayName"`
+	TrustLevel  int     `json:"trustLevel"`
+	WebsiteURL  *string `json:"websiteUrl,omitempty"`
+}
+
+type Example struct {
+	ID             string             `json:"id"`
+	SentenceEn     string             `json:"sentenceEn"`
+	SentenceRu     *string            `json:"sentenceRu,omitempty"`
+	HighlightRange []int              `json:"highlightRange,omitempty"`
+	SourceType     *ExampleSourceType `json:"sourceType,omitempty"`
+	SourceName     *string            `json:"sourceName,omitempty"`
+}
+
+type InboxItem struct {
+	ID        string    `json:"id"`
+	Text      string    `json:"text"`
+	Context   *string   `json:"context,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// Связь формы слова с текущим словом.
+type Inflection struct {
+	Word *Lexeme           `json:"word"`
+	Type MorphologicalType `json:"type"`
+}
+
+// Лексема (Lexeme) — единица языка. Общая для всех.
+// Хранит написание, произношение и связи форм.
+type Lexeme struct {
+	ID             string           `json:"id"`
+	Text           string           `json:"text"`
+	Pronunciations []*Pronunciation `json:"pronunciations"`
+	Senses         []*Sense         `json:"senses"`
+	Inflections    []*Inflection    `json:"inflections"`
+	Lemma          *Lexeme          `json:"lemma,omitempty"`
+}
+
+type Mutation struct {
+}
+
+type Pronunciation struct {
+	AudioURL      string       `json:"audioUrl"`
+	Transcription *string      `json:"transcription,omitempty"`
+	Region        AccentRegion `json:"region"`
+	Source        *DataSource  `json:"source,omitempty"`
+}
+
+type Query struct {
+}
+
+type ReviewResult struct {
+	Card             *Card   `json:"card"`
+	NextReviewInDays float64 `json:"nextReviewInDays"`
+	StatusChanged    bool    `json:"statusChanged"`
+}
+
+// Смысловое значение (Sense).
+// Именно эту сущность пользователь добавляет в "Мои слова".
+type Sense struct {
+	ID           string           `json:"id"`
+	Lexeme       *Lexeme          `json:"lexeme"`
+	PartOfSpeech PartOfSpeech     `json:"partOfSpeech"`
+	Definition   string           `json:"definition"`
+	CefrLevel    *string          `json:"cefrLevel,omitempty"`
+	Source       *DataSource      `json:"source"`
+	Translations []*Translation   `json:"translations"`
+	Examples     []*Example       `json:"examples"`
+	Relations    []*SenseRelation `json:"relations"`
+}
+
+// Семантическая связь (Синоним/Антоним/Коллокация).
+type SenseRelation struct {
+	Sense           *Sense       `json:"sense"`
+	Type            RelationType `json:"type"`
+	IsBidirectional bool         `json:"isBidirectional"`
+}
+
+type StudyFilter struct {
+	Tags     []string         `json:"tags,omitempty"`
+	Statuses []LearningStatus `json:"statuses,omitempty"`
+	Limit    *int             `json:"limit,omitempty"`
+}
+
+type Tag struct {
+	ID    string  `json:"id"`
+	Name  string  `json:"name"`
+	Color *string `json:"color,omitempty"`
+}
+
+type Translation struct {
+	Text   string      `json:"text"`
+	Source *DataSource `json:"source,omitempty"`
+}
+
+type UpdateCardInput struct {
+	CustomTranscription *string  `json:"customTranscription,omitempty"`
+	CustomTranslations  []string `json:"customTranslations,omitempty"`
+	CustomNote          *string  `json:"customNote,omitempty"`
+	Tags                []string `json:"tags,omitempty"`
+}
+
+type AccentRegion string
+
+const (
+	AccentRegionUs      AccentRegion = "US"
+	AccentRegionUk      AccentRegion = "UK"
+	AccentRegionAu      AccentRegion = "AU"
+	AccentRegionGeneral AccentRegion = "GENERAL"
+)
+
+var AllAccentRegion = []AccentRegion{
+	AccentRegionUs,
+	AccentRegionUk,
+	AccentRegionAu,
+	AccentRegionGeneral,
+}
+
+func (e AccentRegion) IsValid() bool {
+	switch e {
+	case AccentRegionUs, AccentRegionUk, AccentRegionAu, AccentRegionGeneral:
+		return true
+	}
+	return false
+}
+
+func (e AccentRegion) String() string {
+	return string(e)
+}
+
+func (e *AccentRegion) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = AccentRegion(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid AccentRegion", str)
+	}
+	return nil
+}
+
+func (e AccentRegion) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *AccentRegion) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e AccentRegion) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type ExampleSourceType string
+
+const (
+	ExampleSourceTypeFilm    ExampleSourceType = "FILM"
+	ExampleSourceTypeBook    ExampleSourceType = "BOOK"
+	ExampleSourceTypeChat    ExampleSourceType = "CHAT"
+	ExampleSourceTypeVideo   ExampleSourceType = "VIDEO"
+	ExampleSourceTypePodcast ExampleSourceType = "PODCAST"
+)
+
+var AllExampleSourceType = []ExampleSourceType{
+	ExampleSourceTypeFilm,
+	ExampleSourceTypeBook,
+	ExampleSourceTypeChat,
+	ExampleSourceTypeVideo,
+	ExampleSourceTypePodcast,
+}
+
+func (e ExampleSourceType) IsValid() bool {
+	switch e {
+	case ExampleSourceTypeFilm, ExampleSourceTypeBook, ExampleSourceTypeChat, ExampleSourceTypeVideo, ExampleSourceTypePodcast:
+		return true
+	}
+	return false
+}
+
+func (e ExampleSourceType) String() string {
+	return string(e)
+}
+
+func (e *ExampleSourceType) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = ExampleSourceType(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid ExampleSourceType", str)
+	}
+	return nil
+}
+
+func (e ExampleSourceType) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *ExampleSourceType) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e ExampleSourceType) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type LearningStatus string
+
+const (
+	LearningStatusNew      LearningStatus = "NEW"
+	LearningStatusLearning LearningStatus = "LEARNING"
+	LearningStatusReview   LearningStatus = "REVIEW"
+	LearningStatusMastered LearningStatus = "MASTERED"
+)
+
+var AllLearningStatus = []LearningStatus{
+	LearningStatusNew,
+	LearningStatusLearning,
+	LearningStatusReview,
+	LearningStatusMastered,
+}
+
+func (e LearningStatus) IsValid() bool {
+	switch e {
+	case LearningStatusNew, LearningStatusLearning, LearningStatusReview, LearningStatusMastered:
+		return true
+	}
+	return false
+}
+
+func (e LearningStatus) String() string {
+	return string(e)
+}
+
+func (e *LearningStatus) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = LearningStatus(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid LearningStatus", str)
+	}
+	return nil
+}
+
+func (e LearningStatus) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *LearningStatus) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e LearningStatus) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type MorphologicalType string
+
+const (
+	MorphologicalTypePlural            MorphologicalType = "PLURAL"
+	MorphologicalTypePastTense         MorphologicalType = "PAST_TENSE"
+	MorphologicalTypePastParticiple    MorphologicalType = "PAST_PARTICIPLE"
+	MorphologicalTypePresentParticiple MorphologicalType = "PRESENT_PARTICIPLE"
+	MorphologicalTypeComparative       MorphologicalType = "COMPARATIVE"
+	MorphologicalTypeSuperlative       MorphologicalType = "SUPERLATIVE"
+)
+
+var AllMorphologicalType = []MorphologicalType{
+	MorphologicalTypePlural,
+	MorphologicalTypePastTense,
+	MorphologicalTypePastParticiple,
+	MorphologicalTypePresentParticiple,
+	MorphologicalTypeComparative,
+	MorphologicalTypeSuperlative,
+}
+
+func (e MorphologicalType) IsValid() bool {
+	switch e {
+	case MorphologicalTypePlural, MorphologicalTypePastTense, MorphologicalTypePastParticiple, MorphologicalTypePresentParticiple, MorphologicalTypeComparative, MorphologicalTypeSuperlative:
+		return true
+	}
+	return false
+}
+
+func (e MorphologicalType) String() string {
+	return string(e)
+}
+
+func (e *MorphologicalType) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = MorphologicalType(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid MorphologicalType", str)
+	}
+	return nil
+}
+
+func (e MorphologicalType) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *MorphologicalType) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e MorphologicalType) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type PartOfSpeech string
+
+const (
+	PartOfSpeechNoun         PartOfSpeech = "NOUN"
+	PartOfSpeechVerb         PartOfSpeech = "VERB"
+	PartOfSpeechAdjective    PartOfSpeech = "ADJECTIVE"
+	PartOfSpeechAdverb       PartOfSpeech = "ADVERB"
+	PartOfSpeechPronoun      PartOfSpeech = "PRONOUN"
+	PartOfSpeechPreposition  PartOfSpeech = "PREPOSITION"
+	PartOfSpeechConjunction  PartOfSpeech = "CONJUNCTION"
+	PartOfSpeechInterjection PartOfSpeech = "INTERJECTION"
+	PartOfSpeechPhrase       PartOfSpeech = "PHRASE"
+	PartOfSpeechIdiom        PartOfSpeech = "IDIOM"
+	PartOfSpeechOther        PartOfSpeech = "OTHER"
+)
+
+var AllPartOfSpeech = []PartOfSpeech{
+	PartOfSpeechNoun,
+	PartOfSpeechVerb,
+	PartOfSpeechAdjective,
+	PartOfSpeechAdverb,
+	PartOfSpeechPronoun,
+	PartOfSpeechPreposition,
+	PartOfSpeechConjunction,
+	PartOfSpeechInterjection,
+	PartOfSpeechPhrase,
+	PartOfSpeechIdiom,
+	PartOfSpeechOther,
+}
+
+func (e PartOfSpeech) IsValid() bool {
+	switch e {
+	case PartOfSpeechNoun, PartOfSpeechVerb, PartOfSpeechAdjective, PartOfSpeechAdverb, PartOfSpeechPronoun, PartOfSpeechPreposition, PartOfSpeechConjunction, PartOfSpeechInterjection, PartOfSpeechPhrase, PartOfSpeechIdiom, PartOfSpeechOther:
+		return true
+	}
+	return false
+}
+
+func (e PartOfSpeech) String() string {
+	return string(e)
+}
+
+func (e *PartOfSpeech) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = PartOfSpeech(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid PartOfSpeech", str)
+	}
+	return nil
+}
+
+func (e PartOfSpeech) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *PartOfSpeech) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e PartOfSpeech) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type RelationType string
+
+const (
+	RelationTypeSynonym     RelationType = "SYNONYM"
+	RelationTypeAntonym     RelationType = "ANTONYM"
+	RelationTypeCollocation RelationType = "COLLOCATION"
+	RelationTypeRelated     RelationType = "RELATED"
+)
+
+var AllRelationType = []RelationType{
+	RelationTypeSynonym,
+	RelationTypeAntonym,
+	RelationTypeCollocation,
+	RelationTypeRelated,
+}
+
+func (e RelationType) IsValid() bool {
+	switch e {
+	case RelationTypeSynonym, RelationTypeAntonym, RelationTypeCollocation, RelationTypeRelated:
+		return true
+	}
+	return false
+}
+
+func (e RelationType) String() string {
+	return string(e)
+}
+
+func (e *RelationType) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = RelationType(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid RelationType", str)
+	}
+	return nil
+}
+
+func (e RelationType) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *RelationType) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e RelationType) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+
+================================================================================
+
+================================================================================
+Файл: graph/resolver.go
+Полный путь: /home/alodi/playground/my-english/backend_v2/graph/resolver.go
+================================================================================
+
+package graph
+
+import (
+	"github.com/heartmarshall/my-english/internal/service/card"
+	"github.com/heartmarshall/my-english/internal/service/dictionary"
+	"github.com/heartmarshall/my-english/internal/service/inbox"
+	"github.com/heartmarshall/my-english/internal/service/loader"
+	"github.com/heartmarshall/my-english/internal/service/stats"
+	"github.com/heartmarshall/my-english/internal/service/study"
+)
+
+// This file will not be regenerated automatically.
+//
+// It serves as dependency injection for your app, add any dependencies you require
+// here.
+
+type Resolver struct {
+	CardService       *card.Service
+	DictionaryService *dictionary.Service
+	InboxService      *inbox.Service
+	LoaderService     *loader.Service
+	StatsService      *stats.Service
+	StudyService      *study.Service
+}
+
+// Card returns CardResolver implementation.
+func (r *Resolver) Card() CardResolver { return &cardResolver{r} }
+
+// Lexeme returns LexemeResolver implementation.
+func (r *Resolver) Lexeme() LexemeResolver { return &lexemeResolver{r} }
+
+// Sense returns SenseResolver implementation.
+func (r *Resolver) Sense() SenseResolver { return &senseResolver{r} }
+
+
+================================================================================
+
+================================================================================
+Файл: graph/scalars.go
+Полный путь: /home/alodi/playground/my-english/backend_v2/graph/scalars.go
+================================================================================
+
+package graph
+
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/99designs/gqlgen/graphql"
+)
+
+// Time представляет время в GraphQL.
+type Time time.Time
+
+// MarshalTime сериализует Time в строку.
+func MarshalTime(t time.Time) graphql.Marshaler {
+	return graphql.MarshalTime(t)
+}
+
+// UnmarshalTime десериализует строку в Time.
+func UnmarshalTime(v interface{}) (time.Time, error) {
+	return graphql.UnmarshalTime(v)
+}
+
+// JSON представляет JSON объект в GraphQL.
+type JSON map[string]interface{}
+
+// MarshalJSON сериализует JSON.
+func MarshalJSON(j map[string]interface{}) graphql.Marshaler {
+	return graphql.MarshalAny(j)
+}
+
+// UnmarshalJSON десериализует JSON.
+func UnmarshalJSON(v interface{}) (map[string]interface{}, error) {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		return val, nil
+	case []byte:
+		var result map[string]interface{}
+		if err := json.Unmarshal(val, &result); err != nil {
+			return nil, fmt.Errorf("cannot unmarshal JSON: %w", err)
+		}
+		return result, nil
+	case string:
+		var result map[string]interface{}
+		if err := json.Unmarshal([]byte(val), &result); err != nil {
+			return nil, fmt.Errorf("cannot unmarshal JSON: %w", err)
+		}
+		return result, nil
+	default:
+		return nil, fmt.Errorf("cannot unmarshal %T into JSON", v)
+	}
+}
 
 
 ================================================================================
@@ -1191,6 +2399,968 @@ type ReviewResult {
   nextReviewInDays: Float! # "Увидимся через 2.5 дня"
   statusChanged: Boolean!
 }
+
+================================================================================
+
+================================================================================
+Файл: graph/schema.resolvers.go
+Полный путь: /home/alodi/playground/my-english/backend_v2/graph/schema.resolvers.go
+================================================================================
+
+package graph
+
+// This file will be automatically regenerated based on the schema, any resolver
+// implementations
+// will be copied through when generating and any unknown code will be moved to the end.
+// Code generated by github.com/99designs/gqlgen version v0.17.85
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/heartmarshall/my-english/internal/model"
+	"github.com/heartmarshall/my-english/internal/service"
+)
+
+// CreateCard is the resolver for the createCard field.
+func (r *mutationResolver) CreateCard(ctx context.Context, input CreateCardInput) (*Card, error) {
+	modelInput := toModelCreateCardInput(input)
+	card, err := r.CardService.Create(ctx, modelInput)
+	if err != nil {
+		return nil, err
+	}
+	return toGraphQLCard(card), nil
+}
+
+// UpdateCard is the resolver for the updateCard field.
+func (r *mutationResolver) UpdateCard(ctx context.Context, id string, input UpdateCardInput) (*Card, error) {
+	uuidID, err := parseUUID(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid card ID: %w", err)
+	}
+
+	modelInput := toModelUpdateCardInput(input)
+	card, err := r.CardService.Update(ctx, uuidID, modelInput)
+	if err != nil {
+		return nil, err
+	}
+	return toGraphQLCard(card), nil
+}
+
+// DeleteCard is the resolver for the deleteCard field.
+func (r *mutationResolver) DeleteCard(ctx context.Context, id string) (bool, error) {
+	uuidID, err := parseUUID(id)
+	if err != nil {
+		return false, fmt.Errorf("invalid card ID: %w", err)
+	}
+
+	err = r.CardService.Delete(ctx, uuidID)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// AddToInbox is the resolver for the addToInbox field.
+func (r *mutationResolver) AddToInbox(ctx context.Context, text string, context *string) (*InboxItem, error) {
+	item, err := r.InboxService.Create(ctx, text, context)
+	if err != nil {
+		return nil, err
+	}
+	return toGraphQLInboxItem(item), nil
+}
+
+// DeleteInboxItem is the resolver for the deleteInboxItem field.
+func (r *mutationResolver) DeleteInboxItem(ctx context.Context, id string) (bool, error) {
+	uuidID, err := parseUUID(id)
+	if err != nil {
+		return false, fmt.Errorf("invalid inbox item ID: %w", err)
+	}
+
+	err = r.InboxService.Delete(ctx, uuidID)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// ConvertInboxToCard is the resolver for the convertInboxToCard field.
+func (r *mutationResolver) ConvertInboxToCard(ctx context.Context, inboxID string, input CreateCardInput) (*Card, error) {
+	// Получаем элемент inbox
+	uuidInboxID, err := parseUUID(inboxID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid inbox item ID: %w", err)
+	}
+
+	inboxItem, err := r.InboxService.GetByID(ctx, uuidInboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Если в input нет customText, используем текст из inbox
+	modelInput := toModelCreateCardInput(input)
+	if modelInput.CustomText == nil {
+		modelInput.CustomText = &inboxItem.RawText
+	}
+
+	// Создаем карточку
+	card, err := r.CardService.Create(ctx, modelInput)
+	if err != nil {
+		return nil, err
+	}
+
+	// Удаляем элемент inbox
+	_ = r.InboxService.Delete(ctx, uuidInboxID) // Игнорируем ошибку удаления
+
+	return toGraphQLCard(card), nil
+}
+
+// ReviewCard is the resolver for the reviewCard field.
+func (r *mutationResolver) ReviewCard(ctx context.Context, cardID string, grade int, timeTakenMs *int) (*ReviewResult, error) {
+	uuidCardID, err := parseUUID(cardID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid card ID: %w", err)
+	}
+
+	durationMs := 0
+	if timeTakenMs != nil {
+		durationMs = *timeTakenMs
+	}
+
+	result, err := r.StudyService.Review(ctx, uuidCardID, grade, durationMs)
+	if err != nil {
+		return nil, err
+	}
+
+	nextReviewInDays := calculateNextReviewInDays(result.SRS.DueDate)
+
+	return &ReviewResult{
+		Card:             toGraphQLCard(&result.Card),
+		NextReviewInDays: nextReviewInDays,
+		StatusChanged:    result.StatusChanged,
+	}, nil
+}
+
+// Search is the resolver for the search field.
+func (r *queryResolver) Search(ctx context.Context, query string) ([]*Lexeme, error) {
+	lexemes, err := r.DictionaryService.Search(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*Lexeme, len(lexemes))
+	for i, lexeme := range lexemes {
+		result[i] = toGraphQLLexeme(&lexeme)
+	}
+	return result, nil
+}
+
+// Lexeme is the resolver for the lexeme field.
+func (r *queryResolver) Lexeme(ctx context.Context, id string) (*Lexeme, error) {
+	uuidID, err := parseUUID(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid lexeme ID: %w", err)
+	}
+
+	lexeme, err := r.DictionaryService.GetLexeme(ctx, uuidID)
+	if err != nil {
+		if err == service.ErrLexemeNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return toGraphQLLexeme(lexeme), nil
+}
+
+// MyCards is the resolver for the myCards field.
+func (r *queryResolver) MyCards(ctx context.Context, filter *CardsFilter, limit *int, offset *int) ([]*Card, error) {
+	limitVal := 20
+	if limit != nil {
+		limitVal = *limit
+	}
+	offsetVal := 0
+	if offset != nil {
+		offsetVal = *offset
+	}
+
+	cardFilter := toModelCardFilter(filter)
+	cards, err := r.CardService.List(ctx, cardFilter, limitVal, offsetVal)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*Card, len(cards))
+	for i := range cards {
+		result[i] = toGraphQLCard(&cards[i])
+	}
+	return result, nil
+}
+
+// Card is the resolver for the card field.
+func (r *queryResolver) Card(ctx context.Context, id string) (*Card, error) {
+	uuidID, err := parseUUID(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid card ID: %w", err)
+	}
+
+	card, err := r.CardService.GetByID(ctx, uuidID)
+	if err != nil {
+		if err == service.ErrCardNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return toGraphQLCard(card), nil
+}
+
+// InboxItems is the resolver for the inboxItems field.
+func (r *queryResolver) InboxItems(ctx context.Context) ([]*InboxItem, error) {
+	items, err := r.InboxService.List(ctx, 100) // Лимит 100 для inbox
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*InboxItem, len(items))
+	for i := range items {
+		result[i] = toGraphQLInboxItem(&items[i])
+	}
+	return result, nil
+}
+
+// StudyQueue is the resolver for the studyQueue field.
+func (r *queryResolver) StudyQueue(ctx context.Context, filter *StudyFilter) ([]*Card, error) {
+	limit := 20
+	if filter != nil && filter.Limit != nil {
+		limit = *filter.Limit
+	}
+
+	studyFilter := toModelStudyFilter(filter)
+	cards, err := r.StudyService.GetQueue(ctx, studyFilter, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*Card, len(cards))
+	for i := range cards {
+		result[i] = toGraphQLCard(&cards[i])
+	}
+	return result, nil
+}
+
+// Stats is the resolver for the stats field.
+func (r *queryResolver) Stats(ctx context.Context) (*DashboardStats, error) {
+	totalCards, masteredCount, learningCount, dueCount, err := r.StatsService.GetDashboardStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DashboardStats{
+		TotalCards:    totalCards,
+		MasteredCount: masteredCount,
+		LearningCount: learningCount,
+		DueCount:      dueCount,
+	}, nil
+}
+
+// Mutation returns MutationResolver implementation.
+func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
+
+// Query returns QueryResolver implementation.
+func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
+
+type mutationResolver struct{ *Resolver }
+type queryResolver struct{ *Resolver }
+
+// ============================================================================
+// FIELD RESOLVERS
+// ============================================================================
+
+// CardResolver интерфейс для field resolvers типа Card.
+type CardResolver interface {
+	Progress(ctx context.Context, obj *Card) (*CardProgress, error)
+	Sense(ctx context.Context, obj *Card) (*Sense, error)
+	Tags(ctx context.Context, obj *Card) ([]*Tag, error)
+}
+
+// LexemeResolver интерфейс для field resolvers типа Lexeme.
+type LexemeResolver interface {
+	Senses(ctx context.Context, obj *Lexeme) ([]*Sense, error)
+	Pronunciations(ctx context.Context, obj *Lexeme) ([]*Pronunciation, error)
+	Inflections(ctx context.Context, obj *Lexeme) ([]*Inflection, error)
+	Lemma(ctx context.Context, obj *Lexeme) (*Lexeme, error)
+}
+
+// SenseResolver интерфейс для field resolvers типа Sense.
+type SenseResolver interface {
+	Lexeme(ctx context.Context, obj *Sense) (*Lexeme, error)
+	Source(ctx context.Context, obj *Sense) (*DataSource, error)
+	Translations(ctx context.Context, obj *Sense) ([]*Translation, error)
+	Examples(ctx context.Context, obj *Sense) ([]*Example, error)
+	Relations(ctx context.Context, obj *Sense) ([]*SenseRelation, error)
+}
+
+// Progress is the resolver for the Card.progress field.
+func (r *cardResolver) Progress(ctx context.Context, obj *Card) (*CardProgress, error) {
+	cardID, err := parseUUID(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	loaders := For(ctx)
+	srsState, err := loaders.SRSByCardID.Load(ctx, cardID)
+	if err != nil {
+		return nil, err
+	}
+
+	reviewCount, err := loaders.ReviewCountByCardID.Load(ctx, cardID)
+	if err != nil {
+		reviewCount = 0 // Игнорируем ошибку, используем 0
+	}
+
+	if srsState == nil {
+		return &CardProgress{
+			Status:        LearningStatusNew,
+			NextReviewAt:  nil,
+			ReviewCount:   reviewCount,
+			LastReviewAt:  nil,
+			AlgorithmData: map[string]interface{}{},
+		}, nil
+	}
+
+	return &CardProgress{
+		Status:        toGraphQLLearningStatus(srsState.Status),
+		NextReviewAt:  srsState.DueDate,
+		ReviewCount:   reviewCount,
+		LastReviewAt:  srsState.LastReviewAt,
+		AlgorithmData: srsState.AlgorithmData,
+	}, nil
+}
+
+// Sense is the resolver for the Card.sense field.
+func (r *cardResolver) Sense(ctx context.Context, obj *Card) (*Sense, error) {
+	cardID, err := parseUUID(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	card, err := r.CardService.GetByID(ctx, cardID)
+	if err != nil {
+		return nil, err
+	}
+
+	if card.SenseID == nil {
+		return nil, nil
+	}
+
+	loaders := For(ctx)
+	sense, err := loaders.SensesByID.Load(ctx, *card.SenseID)
+	if err != nil {
+		return nil, err
+	}
+
+	if sense == nil {
+		return nil, nil
+	}
+
+	return toGraphQLSense(sense), nil
+}
+
+// Tags is the resolver for the Card.tags field.
+func (r *cardResolver) Tags(ctx context.Context, obj *Card) ([]*Tag, error) {
+	cardID, err := parseUUID(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	loaders := For(ctx)
+	tags, err := loaders.TagsByCardID.Load(ctx, cardID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*Tag, len(tags))
+	for i := range tags {
+		result[i] = toGraphQLTag(&tags[i])
+	}
+	return result, nil
+}
+
+// Senses is the resolver for the Lexeme.senses field.
+func (r *lexemeResolver) Senses(ctx context.Context, obj *Lexeme) ([]*Sense, error) {
+	lexemeID, err := parseUUID(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	loaders := For(ctx)
+	senses, err := loaders.SensesByLexemeID.Load(ctx, lexemeID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*Sense, len(senses))
+	for i := range senses {
+		result[i] = toGraphQLSense(&senses[i])
+	}
+	return result, nil
+}
+
+// Pronunciations is the resolver for the Lexeme.pronunciations field.
+func (r *lexemeResolver) Pronunciations(ctx context.Context, obj *Lexeme) ([]*Pronunciation, error) {
+	lexemeID, err := parseUUID(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	loaders := For(ctx)
+	pronunciations, err := loaders.PronunciationsByLexemeID.Load(ctx, lexemeID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*Pronunciation, len(pronunciations))
+	for i := range pronunciations {
+		p := pronunciations[i]
+		var source *DataSource
+		if p.SourceID != nil {
+			ds, err := loaders.DataSourcesByID.Load(ctx, *p.SourceID)
+			if err == nil && ds != nil {
+				source = toGraphQLDataSource(ds)
+			}
+		}
+		result[i] = &Pronunciation{
+			AudioURL:      p.AudioURL,
+			Transcription: p.Transcription,
+			Region:        AccentRegion(p.Region),
+			Source:        source,
+		}
+	}
+	return result, nil
+}
+
+// Inflections is the resolver for the Lexeme.inflections field.
+func (r *lexemeResolver) Inflections(ctx context.Context, obj *Lexeme) ([]*Inflection, error) {
+	lexemeID, err := parseUUID(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	inflections, err := r.LoaderService.GetInflectionsByLemmaID(ctx, lexemeID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*Inflection, len(inflections))
+	for i := range inflections {
+		inf := inflections[i]
+		// Загружаем лексему-форму
+		lexeme, err := r.LoaderService.GetLexemesByIDs(ctx, []uuid.UUID{inf.InflectedLexemeID})
+		if err != nil || len(lexeme) == 0 {
+			continue
+		}
+		result[i] = &Inflection{
+			Word: toGraphQLLexeme(&lexeme[0]),
+			Type: toGraphQLMorphologicalType(model.MorphologicalType(inf.Type)),
+		}
+	}
+	return result, nil
+}
+
+// Lemma is the resolver for the Lexeme.lemma field.
+func (r *lexemeResolver) Lemma(ctx context.Context, obj *Lexeme) (*Lexeme, error) {
+	lexemeID, err := parseUUID(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	inflection, err := r.LoaderService.GetLemmaByInflectedID(ctx, lexemeID)
+	if err != nil || inflection == nil {
+		return nil, nil
+	}
+
+	lexemes, err := r.LoaderService.GetLexemesByIDs(ctx, []uuid.UUID{inflection.LemmaLexemeID})
+	if err != nil || len(lexemes) == 0 {
+		return nil, nil
+	}
+
+	return toGraphQLLexeme(&lexemes[0]), nil
+}
+
+// Translations is the resolver for the Sense.translations field.
+func (r *senseResolver) Translations(ctx context.Context, obj *Sense) ([]*Translation, error) {
+	senseID, err := parseUUID(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	loaders := For(ctx)
+	translations, err := loaders.TranslationsBySenseID.Load(ctx, senseID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*Translation, len(translations))
+	for i := range translations {
+		t := translations[i]
+		var source *DataSource
+		if t.SourceID != nil {
+			ds, err := loaders.DataSourcesByID.Load(ctx, *t.SourceID)
+			if err == nil && ds != nil {
+				source = toGraphQLDataSource(ds)
+			}
+		}
+		result[i] = &Translation{
+			Text:   t.Translation,
+			Source: source,
+		}
+	}
+	return result, nil
+}
+
+// Examples is the resolver for the Sense.examples field.
+func (r *senseResolver) Examples(ctx context.Context, obj *Sense) ([]*Example, error) {
+	senseID, err := parseUUID(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	loaders := For(ctx)
+	examples, err := loaders.ExamplesBySenseID.Load(ctx, senseID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*Example, len(examples))
+	for i := range examples {
+		e := examples[i]
+		var sourceType *ExampleSourceType
+		// SourceType не хранится в БД, можно определить по SourceName или оставить nil
+		// Если нужно, можно добавить поле в модель Example
+		result[i] = &Example{
+			ID:             e.ID.String(),
+			SentenceEn:     e.SentenceEn,
+			SentenceRu:     e.SentenceRu,
+			HighlightRange: e.TargetWordRange,
+			SourceName:     e.SourceName,
+			SourceType:     sourceType,
+		}
+	}
+	return result, nil
+}
+
+// Lexeme is the resolver for the Sense.lexeme field.
+func (r *senseResolver) Lexeme(ctx context.Context, obj *Sense) (*Lexeme, error) {
+	// Получаем sense из БД, чтобы узнать lexemeID
+	senseID, err := parseUUID(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	sense, err := r.LoaderService.GetSensesByIDs(ctx, []uuid.UUID{senseID})
+	if err != nil || len(sense) == 0 {
+		return nil, nil
+	}
+
+	loaders := For(ctx)
+	lexeme, err := loaders.LexemesByID.Load(ctx, sense[0].LexemeID)
+	if err != nil || lexeme == nil {
+		return nil, nil
+	}
+
+	return toGraphQLLexeme(lexeme), nil
+}
+
+// Relations is the resolver for the Sense.relations field.
+func (r *senseResolver) Relations(ctx context.Context, obj *Sense) ([]*SenseRelation, error) {
+	senseID, err := parseUUID(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	loaders := For(ctx)
+	relations, err := loaders.RelationsBySenseID.Load(ctx, senseID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(relations) == 0 {
+		return []*SenseRelation{}, nil
+	}
+
+	// Собираем уникальные ID целевых смыслов для загрузки
+	targetSenseIDsMap := make(map[uuid.UUID]bool)
+	for _, rel := range relations {
+		targetSenseIDsMap[rel.TargetSenseID] = true
+	}
+
+	targetSenseIDs := make([]uuid.UUID, 0, len(targetSenseIDsMap))
+	for id := range targetSenseIDsMap {
+		targetSenseIDs = append(targetSenseIDs, id)
+	}
+
+	// Загружаем целевые смыслы через DataLoader
+	targetSensesMap := make(map[uuid.UUID]*Sense)
+	for _, targetID := range targetSenseIDs {
+		targetSense, err := loaders.SensesByID.Load(ctx, targetID)
+		if err == nil && targetSense != nil {
+			targetSensesMap[targetID] = toGraphQLSense(targetSense)
+		}
+	}
+
+	// Формируем результат
+	result := make([]*SenseRelation, 0, len(relations))
+	for _, rel := range relations {
+		targetSense := targetSensesMap[rel.TargetSenseID]
+		if targetSense != nil {
+			result = append(result, toGraphQLSenseRelation(&rel, targetSense))
+		}
+	}
+
+	return result, nil
+}
+
+// Source is the resolver for the Sense.source field.
+func (r *senseResolver) Source(ctx context.Context, obj *Sense) (*DataSource, error) {
+	// Получаем sense из БД, чтобы узнать sourceID
+	senseID, err := parseUUID(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	sense, err := r.LoaderService.GetSensesByIDs(ctx, []uuid.UUID{senseID})
+	if err != nil || len(sense) == 0 {
+		return nil, nil
+	}
+
+	loaders := For(ctx)
+	source, err := loaders.DataSourcesByID.Load(ctx, sense[0].SourceID)
+	if err != nil || source == nil {
+		return nil, nil
+	}
+
+	return toGraphQLDataSource(source), nil
+}
+
+type cardResolver struct{ *Resolver }
+type lexemeResolver struct{ *Resolver }
+type senseResolver struct{ *Resolver }
+
+
+================================================================================
+
+================================================================================
+Файл: internal/app/app.go
+Полный путь: /home/alodi/playground/my-english/backend_v2/internal/app/app.go
+================================================================================
+
+package app
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"github.com/99designs/gqlgen/graphql"
+	"github.com/99designs/gqlgen/graphql/handler"
+	"github.com/99designs/gqlgen/graphql/handler/extension"
+	"github.com/99designs/gqlgen/graphql/playground"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/heartmarshall/my-english/graph"
+	"github.com/heartmarshall/my-english/internal/clients/freedict"
+	"github.com/heartmarshall/my-english/internal/config"
+	"github.com/heartmarshall/my-english/internal/database"
+	repository "github.com/heartmarshall/my-english/internal/database/repository/factory"
+	"github.com/heartmarshall/my-english/internal/service/card"
+	"github.com/heartmarshall/my-english/internal/service/dictionary"
+	"github.com/heartmarshall/my-english/internal/service/inbox"
+	"github.com/heartmarshall/my-english/internal/service/loader"
+	"github.com/heartmarshall/my-english/internal/service/stats"
+	"github.com/heartmarshall/my-english/internal/service/study"
+	"github.com/heartmarshall/my-english/internal/transport/middleware"
+)
+
+// App представляет основное приложение со всеми зависимостями.
+type App struct {
+	cfg       config.Config
+	logger    *slog.Logger
+	pool      *pgxpool.Pool
+	txManager *database.TxManager
+	repos     *repository.Factory
+	services  *Services
+	resolver  *graph.Resolver
+	server    *http.Server
+	health    *HealthChecker
+}
+
+// Services содержит все сервисы приложения.
+type Services struct {
+	Card       *card.Service
+	Dictionary *dictionary.Service
+	Inbox      *inbox.Service
+	Loader     *loader.Service
+	Stats      *stats.Service
+	Study      *study.Service
+}
+
+// New создаёт и инициализирует новое приложение.
+func New(cfg config.Config) (*App, error) {
+	// 1. Инициализация логгера
+	logger := NewLogger(cfg.Log)
+
+	// 2. Подключение к базе данных
+	pool, err := initDatabase(cfg.Database, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize database: %w", err)
+	}
+
+	// 3. Инициализация менеджера транзакций
+	txManager := database.NewTxManager(pool)
+
+	// 4. Инициализация фабрики репозиториев
+	repos := repository.NewFactory()
+
+	// 5. Инициализация сервисов
+	services, err := initServices(repos, txManager, pool, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize services: %w", err)
+	}
+
+	// 6. Инициализация GraphQL resolver
+	resolver := &graph.Resolver{
+		CardService:       services.Card,
+		DictionaryService: services.Dictionary,
+		InboxService:      services.Inbox,
+		LoaderService:     services.Loader,
+		StatsService:      services.Stats,
+		StudyService:      services.Study,
+	}
+
+	// 7. Инициализация health checker
+	health := NewHealthChecker(pool)
+
+	// 8. Создание HTTP сервера
+	server := initHTTPServer(cfg, resolver, services.Loader, health, logger)
+
+	app := &App{
+		cfg:       cfg,
+		logger:    logger,
+		pool:      pool,
+		txManager: txManager,
+		repos:     repos,
+		services:  services,
+		resolver:  resolver,
+		server:    server,
+		health:    health,
+	}
+
+	return app, nil
+}
+
+// Run запускает HTTP сервер.
+func (a *App) Run() error {
+	a.logger.Info("starting server",
+		slog.String("address", a.cfg.Server.Addr()),
+	)
+
+	if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		return fmt.Errorf("server error: %w", err)
+	}
+
+	return nil
+}
+
+// Shutdown корректно останавливает приложение.
+func (a *App) Shutdown(ctx context.Context) error {
+	a.logger.Info("shutting down application")
+
+	// Закрываем HTTP сервер
+	if err := a.server.Shutdown(ctx); err != nil {
+		a.logger.Error("failed to shutdown server", slog.Any("error", err))
+	}
+
+	// Закрываем пул соединений
+	a.pool.Close()
+
+	a.logger.Info("application shutdown complete")
+	return nil
+}
+
+// initDatabase инициализирует подключение к базе данных.
+func initDatabase(cfg config.DatabaseConfig, logger *slog.Logger) (*pgxpool.Pool, error) {
+	config, err := pgxpool.ParseConfig(cfg.DSN())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse DSN: %w", err)
+	}
+
+	config.MaxConns = int32(cfg.MaxOpenConns)
+	config.MaxConnIdleTime = cfg.ConnMaxLifetime
+	config.HealthCheckPeriod = 1 * time.Minute
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+	}
+
+	// Проверяем соединение
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	logger.Info("database connection established",
+		slog.String("host", cfg.Host),
+		slog.Int("port", cfg.Port),
+		slog.String("database", cfg.Database),
+	)
+
+	return pool, nil
+}
+
+// initServices инициализирует все сервисы приложения.
+func initServices(
+	repos *repository.Factory,
+	txManager *database.TxManager,
+	pool *pgxpool.Pool,
+	logger *slog.Logger,
+) (*Services, error) {
+	// Инициализация провайдеров словаря
+	providers := []dictionary.Provider{
+		freedict.NewClient(),
+	}
+
+	// Card Service
+	cardService := card.New(card.Deps{
+		Repos:     repos,
+		TxManager: txManager,
+	})
+
+	// Dictionary Service
+	dictionaryService := dictionary.New(dictionary.Deps{
+		Repos:     repos,
+		TxManager: txManager,
+		Providers: providers,
+	})
+
+	// Inbox Service
+	inboxService := inbox.New(inbox.Deps{
+		Repos:     repos,
+		TxManager: txManager,
+	})
+
+	// Loader Service (для DataLoaders)
+	loaderService := loader.New(repos, pool)
+
+	// Stats Service
+	statsService := stats.New(stats.Deps{
+		Repos:     repos,
+		TxManager: txManager,
+	})
+
+	// Study Service
+	studyService := study.New(study.Deps{
+		Repos:     repos,
+		TxManager: txManager,
+		// Algorithm будет создан автоматически (SM2 по умолчанию)
+	})
+
+	return &Services{
+		Card:       cardService,
+		Dictionary: dictionaryService,
+		Inbox:      inboxService,
+		Loader:     loaderService,
+		Stats:      statsService,
+		Study:      studyService,
+	}, nil
+}
+
+// initHTTPServer создаёт и настраивает HTTP сервер.
+func initHTTPServer(
+	cfg config.Config,
+	resolver *graph.Resolver,
+	loaderService *loader.Service,
+	health *HealthChecker,
+	logger *slog.Logger,
+) *http.Server {
+	mux := http.NewServeMux()
+
+	// GraphQL handler
+	graphqlHandler := createGraphQLHandler(cfg.GraphQL, resolver, loaderService)
+	mux.Handle("/graphql", graphqlHandler)
+
+	// GraphQL Playground (если включен)
+	if cfg.GraphQL.EnablePlayground {
+		playgroundHandler := playground.Handler("GraphQL Playground", "/graphql")
+		mux.Handle("/playground", playgroundHandler)
+		logger.Info("GraphQL playground enabled at /playground")
+	}
+
+	// Health check endpoints
+	mux.HandleFunc("/health", health.Handler())
+	mux.HandleFunc("/health/live", health.LivenessHandler())
+	mux.HandleFunc("/health/ready", health.ReadinessHandler())
+
+	// Применяем middleware
+	// Порядок важен: сначала DataLoader (чтобы создать loaders в контексте),
+	// затем остальные middleware
+	var httpHandler http.Handler = mux
+	httpHandler = graph.Middleware(loaderService)(httpHandler)
+	httpHandler = middleware.LoggingMiddleware(logger)(httpHandler)
+	httpHandler = middleware.RecoveryMiddleware(logger)(httpHandler)
+	httpHandler = middleware.TimeoutMiddleware(cfg.Server.RequestTimeout)(httpHandler)
+
+	return &http.Server{
+		Addr:         cfg.Server.Addr(),
+		Handler:      httpHandler,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+	}
+}
+
+// createGraphQLHandler создаёт GraphQL handler с настройками.
+func createGraphQLHandler(
+	cfg config.GraphQLConfig,
+	resolver *graph.Resolver,
+	loaderService *loader.Service,
+) http.Handler {
+	// Создаём executable schema
+	// Schema, Directives и Complexity будут использованы из generated.go по умолчанию
+	execSchema := graph.NewExecutableSchema(graph.Config{
+		Resolvers: resolver,
+		// Schema будет nil, что означает использование parsedSchema из generated.go
+		// Directives и Complexity будут пустыми структурами по умолчанию
+	})
+
+	// Создаём GraphQL handler
+	h := handler.NewDefaultServer(execSchema)
+
+	// Настройка кэширования запросов
+	if cfg.QueryCacheSize > 0 {
+		h.Use(extension.FixedComplexityLimit(1000)) // Защита от сложных запросов
+	}
+
+	// Отключение introspection, если нужно
+	if !cfg.EnableIntrospection {
+		h.AroundOperations(func(ctx context.Context, next graphql.OperationHandler) graphql.ResponseHandler {
+			opCtx := graphql.GetOperationContext(ctx)
+			if opCtx.OperationName == "IntrospectionQuery" {
+				return graphql.OneShot(graphql.ErrorResponse(ctx, "introspection is disabled"))
+			}
+			return next(ctx)
+		})
+	}
+
+	return h
+}
+
 
 ================================================================================
 
@@ -2456,6 +4626,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/database/repository"
@@ -2505,6 +4676,62 @@ func (r *Repository) ListActive(ctx context.Context, opts ...repository.QueryOpt
 
 	// Применяем внешние опции (сортировка, лимит, офсет)
 	query = repository.ApplyOptions(query, opts...)
+
+	return r.List(ctx, query)
+}
+
+// ListWithFilters возвращает список карточек с фильтрацией по тегам, статусам и поиску.
+func (r *Repository) ListWithFilters(
+	ctx context.Context,
+	tagNames []string,
+	statuses []model.LearningStatus,
+	searchText *string,
+	opts ...repository.QueryOption,
+) ([]model.Card, error) {
+	query := r.SelectBuilder().
+		Where(schema.Cards.IsDeleted.Eq(false))
+
+	// Фильтрация по тегам (используем subquery)
+	if len(tagNames) > 0 {
+		// Subquery: находим card_id, которые имеют все указанные теги
+		tagSubquery := repository.Builder.
+			Select("DISTINCT "+schema.CardTags.CardID.String()).
+			From(schema.CardTags.Name.String()).
+			Join(schema.Tags.Name.String()+" ON "+schema.Tags.ID.Qualified()+" = "+schema.CardTags.TagID.Qualified()).
+			Where(schema.Tags.NameCol.In(tagNames)).
+			GroupBy(schema.CardTags.CardID.String()).
+			Having("COUNT(DISTINCT "+schema.Tags.ID.Qualified()+") = ?", len(tagNames))
+
+		sql, args, err := tagSubquery.ToSql()
+		if err != nil {
+			return nil, err
+		}
+
+		// Используем IN с subquery через squirrel
+		query = query.Where(squirrel.Expr(schema.Cards.ID.Qualified()+" IN ("+sql+")", args...))
+	}
+
+	// Фильтрация по статусам (JOIN с srs_states)
+	if len(statuses) > 0 {
+		query = query.
+			Join(schema.SRSStates.Name.String() + " ON " + schema.Cards.ID.Qualified() + " = " + schema.SRSStates.CardID.Qualified()).
+			Where(schema.SRSStates.Status.In(statuses))
+	}
+
+	// Поиск по тексту (custom_text)
+	if searchText != nil && *searchText != "" {
+		searchPattern := "%" + *searchText + "%"
+		// Поиск в custom_text (ILIKE для case-insensitive поиска)
+		query = query.Where(schema.Cards.CustomText.ILike(searchPattern))
+	}
+
+	// Применяем внешние опции (сортировка, лимит, офсет)
+	query = repository.ApplyOptions(query, opts...)
+
+	// Если был JOIN, нужно добавить DISTINCT, чтобы избежать дубликатов
+	if len(statuses) > 0 {
+		query = query.Distinct()
+	}
 
 	return r.List(ctx, query)
 }
@@ -2653,6 +4880,21 @@ func (r *Repository) GetTagsByCardID(ctx context.Context, cardID uuid.UUID) ([]m
 	return database.Select[model.Tag](ctx, r.q, sql, args...)
 }
 
+func (r *Repository) ListByCardIDs(ctx context.Context, cardIDs []uuid.UUID) ([]model.CardTag, error) {
+	// squirrel.Eq с слайсом генерирует IN (...)
+	query := repository.Builder.
+		Select(schema.CardTags.Columns()...).
+		From(schema.CardTags.Name.String()).
+		Where(schema.CardTags.CardID.In(cardIDs))
+
+	sql, args, err := query.ToSql()
+	if err != nil {
+		return nil, database.WrapDBError(err)
+	}
+
+	return database.Select[model.CardTag](ctx, r.q, sql, args...)
+}
+
 
 ================================================================================
 
@@ -2724,6 +4966,11 @@ func New(q database.Querier) *Repository {
 
 func (r *Repository) ListBySenseID(ctx context.Context, senseID uuid.UUID) ([]model.Example, error) {
 	return r.FindBy(ctx, schema.Examples.SenseID.String(), senseID)
+}
+
+// ListBySenseIDs batch-загрузка примеров.
+func (r *Repository) ListBySenseIDs(ctx context.Context, senseIDs []uuid.UUID) ([]model.Example, error) {
+	return r.FindBy(ctx, schema.Examples.SenseID.String(), senseIDs)
 }
 
 func (r *Repository) Create(ctx context.Context, ex *model.Example) (*model.Example, error) {
@@ -3337,6 +5584,11 @@ func (r *Repository) ListByLexemeID(ctx context.Context, lexemeID uuid.UUID) ([]
 	return r.FindBy(ctx, schema.Pronunciations.LexemeID.String(), lexemeID)
 }
 
+// ListByLexemeIDs batch-загрузка произношений.
+func (r *Repository) ListByLexemeIDs(ctx context.Context, lexemeIDs []uuid.UUID) ([]model.Pronunciation, error) {
+	return r.FindBy(ctx, schema.Pronunciations.LexemeID.String(), lexemeIDs)
+}
+
 func (r *Repository) Create(ctx context.Context, p *model.Pronunciation) (*model.Pronunciation, error) {
 	insert := r.InsertBuilder().
 		Columns(schema.Pronunciations.InsertColumns()...).
@@ -3436,9 +5688,20 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*model.Sense, e
 	return r.Base.GetByID(ctx, schema.Senses.ID.String(), id)
 }
 
+// GetByIDs возвращает список смыслов по списку ID (для DataLoader'а card.sense).
+func (r *Repository) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]model.Sense, error) {
+	// Base.FindBy отлично работает со слайсами, превращая их в IN (...)
+	return r.FindBy(ctx, schema.Senses.ID.String(), ids)
+}
+
 // ListByLexemeID возвращает список смыслов для конкретной лексемы.
 func (r *Repository) ListByLexemeID(ctx context.Context, lexemeID uuid.UUID) ([]model.Sense, error) {
 	return r.FindBy(ctx, schema.Senses.LexemeID.String(), lexemeID)
+}
+
+// ListByLexemeIDs загружает смыслы для списка лексем (Batch).
+func (r *Repository) ListByLexemeIDs(ctx context.Context, lexemeIDs []uuid.UUID) ([]model.Sense, error) {
+	return r.FindBy(ctx, schema.Senses.LexemeID.String(), lexemeIDs)
 }
 
 // Create создаёт новый смысл.
@@ -3487,21 +5750,103 @@ func New(q database.Querier) *Repository {
 	}
 }
 
-// ListBySourceSenseID возвращает связи, исходящие от смысла.
+// ListBySourceSenseID возвращает связи, где данный sense является источником.
 func (r *Repository) ListBySourceSenseID(ctx context.Context, senseID uuid.UUID) ([]model.SenseRelation, error) {
 	return r.FindBy(ctx, schema.SenseRelations.SourceSenseID.String(), senseID)
 }
 
-// ListByTargetSenseID возвращает связи, входящие в смысл (кто ссылается на нас).
+// ListByTargetSenseID возвращает связи, где данный sense является целью.
+// Используется для двусторонних связей.
 func (r *Repository) ListByTargetSenseID(ctx context.Context, senseID uuid.UUID) ([]model.SenseRelation, error) {
 	return r.FindBy(ctx, schema.SenseRelations.TargetSenseID.String(), senseID)
 }
 
+// ListBySenseID возвращает все связи для смысла (как источник, так и цель).
+func (r *Repository) ListBySenseID(ctx context.Context, senseID uuid.UUID) ([]model.SenseRelation, error) {
+	// Получаем связи, где sense является источником
+	sourceRelations, err := r.ListBySourceSenseID(ctx, senseID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Получаем связи, где sense является целью (для двусторонних связей)
+	targetRelations, err := r.ListByTargetSenseID(ctx, senseID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Объединяем результаты
+	result := make([]model.SenseRelation, 0, len(sourceRelations)+len(targetRelations))
+	result = append(result, sourceRelations...)
+
+	// Для целевых связей создаем обратные связи, если они двусторонние
+	for _, rel := range targetRelations {
+		if rel.IsBidirectional {
+			// Создаем обратную связь для отображения
+			reverseRel := model.SenseRelation{
+				SourceSenseID:   rel.TargetSenseID,
+				TargetSenseID:   rel.SourceSenseID,
+				Type:            rel.Type,
+				IsBidirectional: rel.IsBidirectional,
+				SourceID:        rel.SourceID,
+			}
+			result = append(result, reverseRel)
+		}
+	}
+
+	return result, nil
+}
+
+// ListBySenseIDs batch-загрузка связей для списка смыслов.
+func (r *Repository) ListBySenseIDs(ctx context.Context, senseIDs []uuid.UUID) ([]model.SenseRelation, error) {
+	if len(senseIDs) == 0 {
+		return []model.SenseRelation{}, nil
+	}
+
+	// Получаем связи, где sense является источником
+	sourceRelations, err := r.FindBy(ctx, schema.SenseRelations.SourceSenseID.String(), senseIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Получаем связи, где sense является целью
+	targetRelations, err := r.FindBy(ctx, schema.SenseRelations.TargetSenseID.String(), senseIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Объединяем и обрабатываем двусторонние связи
+	result := make([]model.SenseRelation, 0, len(sourceRelations)+len(targetRelations))
+	result = append(result, sourceRelations...)
+
+	// Для целевых связей создаем обратные связи, если они двусторонние
+	for _, rel := range targetRelations {
+		if rel.IsBidirectional {
+			reverseRel := model.SenseRelation{
+				SourceSenseID:   rel.TargetSenseID,
+				TargetSenseID:   rel.SourceSenseID,
+				Type:            rel.Type,
+				IsBidirectional: rel.IsBidirectional,
+				SourceID:        rel.SourceID,
+			}
+			result = append(result, reverseRel)
+		}
+	}
+
+	return result, nil
+}
+
+// Create создаёт новую связь между смыслами.
 func (r *Repository) Create(ctx context.Context, rel *model.SenseRelation) (*model.SenseRelation, error) {
 	insert := r.InsertBuilder().
 		Columns(schema.SenseRelations.InsertColumns()...).
-		Values(rel.SourceSenseID, rel.TargetSenseID, rel.Type, rel.IsBidirectional, rel.SourceID).
-		Suffix("ON CONFLICT DO NOTHING RETURNING *")
+		Values(
+			rel.SourceSenseID,
+			rel.TargetSenseID,
+			rel.Type,
+			rel.IsBidirectional,
+			rel.SourceID,
+		)
 
 	return r.InsertReturning(ctx, insert)
 }
@@ -3550,6 +5895,10 @@ func (r *Repository) Create(ctx context.Context, t *model.SenseTranslation) (*mo
 	return r.InsertReturning(ctx, insert)
 }
 
+func (r *Repository) ListBySenseIDs(ctx context.Context, senseIDs []uuid.UUID) ([]model.SenseTranslation, error) {
+	return r.FindBy(ctx, schema.SenseTranslations.SenseID.String(), senseIDs)
+}
+
 
 ================================================================================
 
@@ -3589,10 +5938,21 @@ func (r *Repository) GetByCardID(ctx context.Context, cardID uuid.UUID) (*model.
 
 // ListDueForReview возвращает карточки, которые нужно повторить (due_date < now).
 func (r *Repository) ListDueForReview(ctx context.Context, limit int) ([]model.SRSState, error) {
+	return r.ListDueForReviewWithFilter(ctx, nil, limit)
+}
+
+// ListDueForReviewWithFilter возвращает карточки для повторения с фильтрацией по статусам.
+func (r *Repository) ListDueForReviewWithFilter(ctx context.Context, statuses []model.LearningStatus, limit int) ([]model.SRSState, error) {
 	query := r.SelectBuilder().
 		Where(schema.SRSStates.DueDate.LtOrEq(time.Now())).
-		Where(schema.SRSStates.Status.NotEq(model.LearningStatusMastered)).
 		OrderBy(schema.SRSStates.DueDate.Asc())
+
+	// Если указаны статусы, фильтруем по ним, иначе исключаем только MASTERED
+	if len(statuses) > 0 {
+		query = query.Where(schema.SRSStates.Status.In(statuses))
+	} else {
+		query = query.Where(schema.SRSStates.Status.NotEq(model.LearningStatusMastered))
+	}
 
 	query = repository.ApplyOptions(query, repository.WithLimit(limit))
 	return r.List(ctx, query)
@@ -3611,6 +5971,10 @@ func (r *Repository) Upsert(ctx context.Context, state *model.SRSState) (*model.
 		Suffix("ON CONFLICT (card_id) DO UPDATE SET status = EXCLUDED.status, due_date = EXCLUDED.due_date, algorithm_data = EXCLUDED.algorithm_data, last_review_at = EXCLUDED.last_review_at RETURNING *")
 
 	return r.InsertReturning(ctx, insert)
+}
+
+func (r *Repository) ListByCardIDs(ctx context.Context, cardIDs []uuid.UUID) ([]model.SRSState, error) {
+	return r.FindBy(ctx, schema.SRSStates.CardID.String(), cardIDs)
 }
 
 
@@ -3652,6 +6016,13 @@ func (r *Repository) Create(ctx context.Context, tag *model.Tag) (*model.Tag, er
 		Values(tag.Name, tag.ColorHex)
 
 	return r.InsertReturning(ctx, insert)
+}
+
+func (r *Repository) GetByIDs(ctx context.Context, ids []int) ([]model.Tag, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return r.FindBy(ctx, schema.Tags.ID.String(), ids)
 }
 
 
@@ -4502,7 +6873,21 @@ func (s *Service) Create(ctx context.Context, input CreateCardInput) (*model.Car
 
 	// 2. Транзакция
 	err := s.txManager.RunInTx(ctx, func(ctx context.Context, tx database.Querier) error {
-		// --- A. Создаем Card ---
+		// --- A. Валидация SenseID (если указан) ---
+		if input.SenseID != nil {
+			sense, err := s.repos.Sense(tx).GetByID(ctx, *input.SenseID)
+			if err != nil {
+				if database.IsNotFoundError(err) {
+					return service.ErrSenseNotFound
+				}
+				return err
+			}
+			if sense == nil {
+				return service.ErrSenseNotFound
+			}
+		}
+
+		// --- B. Создаем Card ---
 		cardRepo := s.repos.Card(tx)
 
 		cardModel := &model.Card{
@@ -4520,7 +6905,7 @@ func (s *Service) Create(ctx context.Context, input CreateCardInput) (*model.Car
 			return err
 		}
 
-		// --- B. Инициализируем SRS State (Status: New) ---
+		// --- C. Инициализируем SRS State (Status: New) ---
 		srsRepo := s.repos.SRS(tx)
 		initialState := &model.SRSState{
 			CardID:        createdCard.ID,
@@ -4533,7 +6918,7 @@ func (s *Service) Create(ctx context.Context, input CreateCardInput) (*model.Car
 			return err
 		}
 
-		// --- C. Обрабатываем Теги ---
+		// --- D. Обрабатываем Теги ---
 		if len(input.Tags) > 0 {
 			tagRepo := s.repos.Tag(tx)
 			cardTagRepo := s.repos.CardTag(tx)
@@ -4594,7 +6979,10 @@ func (s *Service) Create(ctx context.Context, input CreateCardInput) (*model.Car
 
 package card
 
-import "github.com/google/uuid"
+import (
+	"github.com/google/uuid"
+	"github.com/heartmarshall/my-english/internal/model"
+)
 
 type CreateCardInput struct {
 	// Вариант А: Ссылка на словарь
@@ -4623,7 +7011,9 @@ type UpdateCardInput struct {
 
 // Filter используется для поиска карточек пользователя
 type Filter struct {
-	Tags []string
+	Search   *string
+	Tags     []string
+	Statuses []model.LearningStatus
 }
 
 
@@ -4643,6 +7033,7 @@ import (
 	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/database/repository"
 	factory "github.com/heartmarshall/my-english/internal/database/repository/factory"
+	"github.com/heartmarshall/my-english/internal/database/schema"
 	"github.com/heartmarshall/my-english/internal/model"
 	"github.com/heartmarshall/my-english/internal/service"
 )
@@ -4677,15 +7068,25 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*model.Card, error
 	return card, nil
 }
 
-// List возвращает список активных карточек с пагинацией.
+// List возвращает список активных карточек с пагинацией и фильтрацией.
 func (s *Service) List(ctx context.Context, filter *Filter, limit, offset int) ([]model.Card, error) {
-	// TODO: Реализовать фильтрацию по тегам (потребует JOIN или subquery в репозитории)
-	// Пока возвращаем просто список активных
-
 	opts := []repository.QueryOption{
 		repository.WithPagination(limit, offset),
+		repository.WithOrderByDesc(schema.Cards.CreatedAt.Qualified()), // Сортировка по дате создания (новые сначала)
 	}
 
+	// Если есть фильтры, используем метод с фильтрацией
+	if filter != nil && (len(filter.Tags) > 0 || len(filter.Statuses) > 0 || filter.Search != nil) {
+		return s.repos.Card(s.txManager.Q()).ListWithFilters(
+			ctx,
+			filter.Tags,
+			filter.Statuses,
+			filter.Search,
+			opts...,
+		)
+	}
+
+	// Иначе используем простой метод без фильтров
 	return s.repos.Card(s.txManager.Q()).ListActive(ctx, opts...)
 }
 
@@ -4731,23 +7132,16 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, input UpdateCardInpu
 		current.CustomNote = input.CustomNote
 		current.CustomImageURL = input.CustomImageURL
 
-		// В CardRepository у нас нет метода Update, который принимает структуру целиком,
-		// есть только SoftDelete. Нужно добавить метод Update в репозиторий,
-		// либо использовать Base.UpdateBuilder вручную здесь (плохая практика).
-		// *Предполагаем, что в repository/card/repository.go мы добавим метод Update*
-
-		// TODO: Добавить метод Update в CardRepository.
-		// Для MVP пока опустим детали реализации Update в репо, но логика сервиса такая:
-		// _, err = cardRepo.Update(ctx, current)
-
-		updatedCard = current
+		// Сохраняем изменения в БД
+		updatedCard, err = cardRepo.Update(ctx, current)
+		if err != nil {
+			return err
+		}
 
 		// 3. Синхронизируем теги
-		// Это сложная логика (найти diff и применить).
-		// У нас в meaningTagRepo был метод SyncTags.
-		// Стоит реализовать аналогичный SyncTags в CardTagRepository.
-
-		if len(input.Tags) > 0 {
+		// Если input.Tags == nil, теги не обновляем
+		// Если input.Tags != nil (даже пустой массив), синхронизируем теги
+		if input.Tags != nil {
 			tagRepo := s.repos.Tag(tx)
 			cardTagRepo := s.repos.CardTag(tx)
 
@@ -4777,12 +7171,18 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, input UpdateCardInpu
 			if err := cardTagRepo.DetachAll(ctx, id); err != nil {
 				return err
 			}
-			// Добавляем новые
+			// Добавляем новые (если есть)
 			for _, tid := range newTagIDs {
 				if err := cardTagRepo.Attach(ctx, id, tid); err != nil {
 					return err
 				}
 			}
+		}
+
+		// Перезагружаем карточку с обновленными данными
+		updatedCard, err = cardRepo.GetByID(ctx, id)
+		if err != nil {
+			return err
 		}
 
 		return nil
@@ -5106,6 +7506,7 @@ import (
 	"github.com/heartmarshall/my-english/internal/database"
 	repository "github.com/heartmarshall/my-english/internal/database/repository/factory"
 	"github.com/heartmarshall/my-english/internal/model"
+	"github.com/heartmarshall/my-english/internal/service"
 )
 
 type Service struct {
@@ -5131,7 +7532,14 @@ func New(deps Deps) *Service {
 // GetLexeme возвращает лексему по ID (без вложенных связей, для простоты).
 // В реальном GraphQL резолвере связи будут грузиться через DataLoaders.
 func (s *Service) GetLexeme(ctx context.Context, id uuid.UUID) (*model.Lexeme, error) {
-	return s.repos.Lexeme(s.txManager.Q()).GetByID(ctx, "id", id)
+	lexeme, err := s.repos.Lexeme(s.txManager.Q()).GetByID(ctx, "id", id)
+	if err != nil {
+		if database.IsNotFoundError(err) {
+			return nil, service.ErrLexemeNotFound
+		}
+		return nil, err
+	}
+	return lexeme, nil
 }
 
 
@@ -5217,6 +7625,331 @@ var (
 ================================================================================
 
 ================================================================================
+Файл: internal/service/inbox/service.go
+Полный путь: /home/alodi/playground/my-english/backend_v2/internal/service/inbox/service.go
+================================================================================
+
+package inbox
+
+import (
+	"context"
+
+	"github.com/google/uuid"
+	"github.com/heartmarshall/my-english/internal/database"
+	factory "github.com/heartmarshall/my-english/internal/database/repository/factory"
+	"github.com/heartmarshall/my-english/internal/model"
+)
+
+type Service struct {
+	repos     *factory.Factory
+	txManager *database.TxManager
+}
+
+type Deps struct {
+	Repos     *factory.Factory
+	TxManager *database.TxManager
+}
+
+func New(deps Deps) *Service {
+	return &Service{
+		repos:     deps.Repos,
+		txManager: deps.TxManager,
+	}
+}
+
+// List возвращает список элементов inbox.
+func (s *Service) List(ctx context.Context, limit int) ([]model.InboxItem, error) {
+	return s.repos.Inbox(s.txManager.Q()).ListRecent(ctx, limit)
+}
+
+// GetByID возвращает элемент inbox по ID.
+func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*model.InboxItem, error) {
+	return s.repos.Inbox(s.txManager.Q()).GetByID(ctx, id)
+}
+
+// Create создаёт новый элемент inbox.
+func (s *Service) Create(ctx context.Context, text string, contextNote *string) (*model.InboxItem, error) {
+	item := &model.InboxItem{
+		RawText:     text,
+		ContextNote: contextNote,
+	}
+	return s.repos.Inbox(s.txManager.Q()).Create(ctx, item)
+}
+
+// Delete удаляет элемент inbox.
+func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+	return s.repos.Inbox(s.txManager.Q()).Delete(ctx, id)
+}
+
+
+================================================================================
+
+================================================================================
+Файл: internal/service/loader/service.go
+Полный путь: /home/alodi/playground/my-english/backend_v2/internal/service/loader/service.go
+================================================================================
+
+package loader
+
+import (
+	"context"
+
+	"github.com/google/uuid"
+	"github.com/heartmarshall/my-english/internal/database"
+	"github.com/heartmarshall/my-english/internal/database/repository"
+	factory "github.com/heartmarshall/my-english/internal/database/repository/factory"
+	"github.com/heartmarshall/my-english/internal/database/schema"
+	"github.com/heartmarshall/my-english/internal/model"
+)
+
+type Service struct {
+	repos *factory.Factory
+	db    database.Querier // Пул соединений
+}
+
+func New(repos *factory.Factory, db database.Querier) *Service {
+	return &Service{
+		repos: repos,
+		db:    db,
+	}
+}
+
+// --- Linguistic ---
+
+func (s *Service) GetSensesByLexemeIDs(ctx context.Context, lexemeIDs []uuid.UUID) ([]model.Sense, error) {
+	return s.repos.Sense(s.db).ListByLexemeIDs(ctx, lexemeIDs)
+}
+
+func (s *Service) GetPronunciationsByLexemeIDs(ctx context.Context, lexemeIDs []uuid.UUID) ([]model.Pronunciation, error) {
+	return s.repos.Pronunciation(s.db).ListByLexemeIDs(ctx, lexemeIDs)
+}
+
+func (s *Service) GetTranslationsBySenseIDs(ctx context.Context, senseIDs []uuid.UUID) ([]model.SenseTranslation, error) {
+	return s.repos.SenseTranslation(s.db).ListBySenseIDs(ctx, senseIDs)
+}
+
+func (s *Service) GetExamplesBySenseIDs(ctx context.Context, senseIDs []uuid.UUID) ([]model.Example, error) {
+	return s.repos.Example(s.db).ListBySenseIDs(ctx, senseIDs)
+}
+
+// --- User / Study ---
+
+func (s *Service) GetSRSByCardIDs(ctx context.Context, cardIDs []uuid.UUID) ([]model.SRSState, error) {
+	return s.repos.SRS(s.db).ListByCardIDs(ctx, cardIDs)
+}
+
+// GetTagsByCardIDs — сложный случай (Many-to-Many).
+// Возвращает мапу: CardID -> []Tag
+func (s *Service) GetTagsByCardIDs(ctx context.Context, cardIDs []uuid.UUID) (map[uuid.UUID][]model.Tag, error) {
+	// 1. Получаем связи (CardID, TagID)
+	links, err := s.repos.CardTag(s.db).ListByCardIDs(ctx, cardIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(links) == 0 {
+		return map[uuid.UUID][]model.Tag{}, nil
+	}
+
+	// 2. Собираем уникальные TagID
+	tagIDsMap := make(map[int]bool)
+	for _, link := range links {
+		tagIDsMap[link.TagID] = true
+	}
+
+	uniqueTagIDs := make([]int, 0, len(tagIDsMap))
+	for id := range tagIDsMap {
+		uniqueTagIDs = append(uniqueTagIDs, id)
+	}
+
+	// 3. Загружаем сами теги
+	tags, err := s.repos.Tag(s.db).GetByIDs(ctx, uniqueTagIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. Создаем мапу TagID -> Tag для быстрого поиска
+	tagsByID := make(map[int]model.Tag)
+	for _, t := range tags {
+		tagsByID[t.ID] = t
+	}
+
+	// 5. Собираем итоговую мапу CardID -> []Tag
+	result := make(map[uuid.UUID][]model.Tag)
+	for _, link := range links {
+		if tag, ok := tagsByID[link.TagID]; ok {
+			result[link.CardID] = append(result[link.CardID], tag)
+		}
+	}
+
+	return result, nil
+}
+
+// GetSensesByIDs возвращает список смыслов по списку ID.
+func (s *Service) GetSensesByIDs(ctx context.Context, senseIDs []uuid.UUID) ([]model.Sense, error) {
+	return s.repos.Sense(s.db).GetByIDs(ctx, senseIDs)
+}
+
+// GetLexemesByIDs возвращает список лексем по списку ID.
+func (s *Service) GetLexemesByIDs(ctx context.Context, lexemeIDs []uuid.UUID) ([]model.Lexeme, error) {
+	if len(lexemeIDs) == 0 {
+		return []model.Lexeme{}, nil
+	}
+	return s.repos.Lexeme(s.db).FindBy(ctx, schema.Lexemes.ID.String(), lexemeIDs)
+}
+
+// GetDataSourcesByIDs возвращает список источников данных по списку ID.
+func (s *Service) GetDataSourcesByIDs(ctx context.Context, sourceIDs []int) ([]model.DataSource, error) {
+	if len(sourceIDs) == 0 {
+		return []model.DataSource{}, nil
+	}
+	// Преобразуем []int в []any для FindBy
+	ids := make([]any, len(sourceIDs))
+	for i, id := range sourceIDs {
+		ids[i] = id
+	}
+	return s.repos.DataSource(s.db).FindBy(ctx, schema.DataSources.ID.String(), ids)
+}
+
+// GetRelationsBySenseIDs возвращает список связей для списка смыслов.
+func (s *Service) GetRelationsBySenseIDs(ctx context.Context, senseIDs []uuid.UUID) ([]model.SenseRelation, error) {
+	return s.repos.SenseRelation(s.db).ListBySenseIDs(ctx, senseIDs)
+}
+
+// GetInflectionsByLemmaID возвращает формы для леммы.
+func (s *Service) GetInflectionsByLemmaID(ctx context.Context, lemmaID uuid.UUID) ([]model.Inflection, error) {
+	return s.repos.Inflection(s.db).GetFormsByLemmaID(ctx, lemmaID)
+}
+
+// GetLemmaByInflectedID возвращает лемму для формы.
+func (s *Service) GetLemmaByInflectedID(ctx context.Context, inflectedID uuid.UUID) (*model.Inflection, error) {
+	inflections, err := s.repos.Inflection(s.db).GetLemmaByInflectedID(ctx, inflectedID)
+	if err != nil {
+		return nil, err
+	}
+	if len(inflections) == 0 {
+		return nil, nil
+	}
+	return &inflections[0], nil
+}
+
+// GetReviewCountByCardIDs возвращает количество повторений для карточек.
+func (s *Service) GetReviewCountByCardIDs(ctx context.Context, cardIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	result := make(map[uuid.UUID]int)
+
+	// Для каждой карточки считаем количество review logs
+	for _, cardID := range cardIDs {
+		// Используем Count с условием через schema
+		count, err := s.repos.Review(s.db).Count(ctx, repository.WithWhere(schema.ReviewLogs.CardID.Eq(cardID)))
+		if err != nil {
+			return nil, err
+		}
+		result[cardID] = int(count)
+	}
+
+	return result, nil
+}
+
+
+================================================================================
+
+================================================================================
+Файл: internal/service/stats/service.go
+Полный путь: /home/alodi/playground/my-english/backend_v2/internal/service/stats/service.go
+================================================================================
+
+package stats
+
+import (
+	"context"
+	"time"
+
+	"github.com/heartmarshall/my-english/internal/database"
+	"github.com/heartmarshall/my-english/internal/database/repository"
+	factory "github.com/heartmarshall/my-english/internal/database/repository/factory"
+	"github.com/heartmarshall/my-english/internal/database/schema"
+	"github.com/heartmarshall/my-english/internal/model"
+)
+
+type Service struct {
+	repos     *factory.Factory
+	txManager *database.TxManager
+}
+
+type Deps struct {
+	Repos     *factory.Factory
+	TxManager *database.TxManager
+}
+
+func New(deps Deps) *Service {
+	return &Service{
+		repos:     deps.Repos,
+		txManager: deps.TxManager,
+	}
+}
+
+// GetDashboardStats возвращает статистику для дашборда.
+func (s *Service) GetDashboardStats(ctx context.Context) (totalCards, masteredCount, learningCount, dueCount int, err error) {
+	cardRepo := s.repos.Card(s.txManager.Q())
+	srsRepo := s.repos.SRS(s.txManager.Q())
+
+	// Общее количество активных карточек
+	totalCards64, err := cardRepo.Count(ctx, repository.WithWhere(schema.Cards.IsDeleted.Eq(false)))
+	if err != nil {
+		return
+	}
+	totalCards = int(totalCards64)
+
+	// Количество карточек со статусом MASTERED
+	masteredCount64, err := srsRepo.Count(ctx, repository.WithWhere(schema.SRSStates.Status.Eq(model.LearningStatusMastered)))
+	if err != nil {
+		return
+	}
+	masteredCount = int(masteredCount64)
+
+	// Количество карточек со статусом LEARNING
+	learningCount64, err := srsRepo.Count(ctx, repository.WithWhere(schema.SRSStates.Status.Eq(model.LearningStatusLearning)))
+	if err != nil {
+		return
+	}
+	learningCount = int(learningCount64)
+
+	// Количество карточек, которые нужно повторить (due_date <= now)
+	now := time.Now()
+	dueCount64, err := srsRepo.Count(ctx,
+		repository.WithWhere(schema.SRSStates.DueDate.LtOrEq(now)),
+		repository.WithWhere(schema.SRSStates.Status.NotEq(model.LearningStatusMastered)),
+	)
+	if err != nil {
+		return
+	}
+	dueCount = int(dueCount64)
+
+	return
+}
+
+
+================================================================================
+
+================================================================================
+Файл: internal/service/study/dto.go
+Полный путь: /home/alodi/playground/my-english/backend_v2/internal/service/study/dto.go
+================================================================================
+
+package study
+
+import "github.com/heartmarshall/my-english/internal/model"
+
+// Filter используется для фильтрации очереди изучения
+type Filter struct {
+	Tags     []string
+	Statuses []model.LearningStatus
+}
+
+
+================================================================================
+
+================================================================================
 Файл: internal/service/study/queue.go
 Полный путь: /home/alodi/playground/my-english/backend_v2/internal/service/study/queue.go
 ================================================================================
@@ -5230,14 +7963,22 @@ import (
 	"github.com/heartmarshall/my-english/internal/model"
 )
 
-// GetQueue возвращает список карточек для изучения.
-func (s *Service) GetQueue(ctx context.Context, limit int) ([]model.Card, error) {
+// GetQueue возвращает список карточек для изучения с опциональной фильтрацией.
+func (s *Service) GetQueue(ctx context.Context, filter *Filter, limit int) ([]model.Card, error) {
 	// 1. Получаем состояния SRS, которые пора учить
 	// Используем обычный пул (чтение)
 	srsRepo := s.repos.SRS(s.txManager.Q())
 
-	// Метод ListDueForReview мы описали в репозитории ранее
-	dueStates, err := srsRepo.ListDueForReview(ctx, limit)
+	var dueStates []model.SRSState
+	var err error
+
+	// Применяем фильтр по статусам, если указан
+	if filter != nil && len(filter.Statuses) > 0 {
+		dueStates, err = srsRepo.ListDueForReviewWithFilter(ctx, filter.Statuses, limit)
+	} else {
+		dueStates, err = srsRepo.ListDueForReview(ctx, limit)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -5259,7 +8000,75 @@ func (s *Service) GetQueue(ctx context.Context, limit int) ([]model.Card, error)
 		return nil, err
 	}
 
+	// 4. Применяем фильтр по тегам, если указан
+	if filter != nil && len(filter.Tags) > 0 {
+		cards = s.filterCardsByTags(ctx, cards, filter.Tags)
+	}
+
 	return cards, nil
+}
+
+// filterCardsByTags фильтрует карточки по тегам.
+func (s *Service) filterCardsByTags(ctx context.Context, cards []model.Card, tagNames []string) []model.Card {
+	if len(tagNames) == 0 {
+		return cards
+	}
+
+	// Получаем ID тегов по именам
+	tagRepo := s.repos.Tag(s.txManager.Q())
+	tagIDsMap := make(map[int]bool)
+
+	for _, tagName := range tagNames {
+		tag, err := tagRepo.GetByName(ctx, tagName)
+		if err != nil || tag == nil {
+			continue // Пропускаем несуществующие теги
+		}
+		tagIDsMap[tag.ID] = true
+	}
+
+	if len(tagIDsMap) == 0 {
+		return []model.Card{} // Если ни один тег не найден, возвращаем пустой список
+	}
+
+	// Получаем связи карточек с тегами
+	cardTagRepo := s.repos.CardTag(s.txManager.Q())
+	cardIDs := make([]uuid.UUID, len(cards))
+	for i := range cards {
+		cardIDs[i] = cards[i].ID
+	}
+
+	cardTags, err := cardTagRepo.ListByCardIDs(ctx, cardIDs)
+	if err != nil {
+		// В случае ошибки возвращаем исходный список
+		return cards
+	}
+
+	// Создаем мапу: cardID -> множество tagID
+	cardTagMap := make(map[uuid.UUID]map[int]bool)
+	for _, ct := range cardTags {
+		if cardTagMap[ct.CardID] == nil {
+			cardTagMap[ct.CardID] = make(map[int]bool)
+		}
+		cardTagMap[ct.CardID][ct.TagID] = true
+	}
+
+	// Фильтруем карточки: карточка должна иметь все указанные теги
+	filtered := make([]model.Card, 0)
+	for _, card := range cards {
+		cardTags := cardTagMap[card.ID]
+		hasAllTags := true
+		for tagID := range tagIDsMap {
+			if !cardTags[tagID] {
+				hasAllTags = false
+				break
+			}
+		}
+		if hasAllTags {
+			filtered = append(filtered, card)
+		}
+	}
+
+	return filtered
 }
 
 
@@ -6108,3 +8917,4 @@ func L(ctx context.Context) *slog.Logger {
 ================================================================================
 
   - go.sum
+  - graph/generated.go

@@ -2,7 +2,6 @@ package card
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"github.com/google/uuid"
@@ -12,12 +11,17 @@ import (
 )
 
 func (s *Service) Update(ctx context.Context, id uuid.UUID, input UpdateCardInput) (*model.Card, error) {
+	// Валидация входных данных
+	if err := s.validateUpdateInput(input); err != nil {
+		return nil, err
+	}
+
 	var updatedCard *model.Card
 
 	err := s.txManager.RunInTx(ctx, func(ctx context.Context, tx database.Querier) error {
 		cardRepo := s.repos.Card(tx)
 
-		// 1. Получаем текущую карточку (с блокировкой на обновление, если нужно, но пока просто Get)
+		// 1. Получаем текущую карточку
 		current, err := cardRepo.GetByID(ctx, id)
 		if err != nil {
 			if database.IsNotFoundError(err) {
@@ -45,24 +49,16 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, input UpdateCardInpu
 			tagRepo := s.repos.Tag(tx)
 			cardTagRepo := s.repos.CardTag(tx)
 
-			// Собираем ID новых тегов
+			// Дедуплицируем и нормализуем теги
+			uniqueTags := normalizeAndDeduplicateTags(input.Tags)
+
+			// Собираем ID новых тегов с использованием атомарного GetOrCreate
 			var newTagIDs []int
-			for _, name := range input.Tags {
-				name = strings.TrimSpace(name)
-				if name == "" {
-					continue
-				}
-
-				tag, err := tagRepo.GetByName(ctx, name)
-				if err != nil && !errors.Is(err, database.ErrNotFound) {
+			for _, name := range uniqueTags {
+				// GetOrCreate использует ON CONFLICT, безопасно для параллельных запросов
+				tag, err := tagRepo.GetOrCreate(ctx, name)
+				if err != nil {
 					return err
-				}
-
-				if tag == nil {
-					tag, err = tagRepo.Create(ctx, &model.Tag{Name: name}) // Упрощенно
-					if err != nil {
-						return err
-					}
 				}
 				newTagIDs = append(newTagIDs, tag.ID)
 			}
@@ -89,6 +85,30 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, input UpdateCardInpu
 	})
 
 	return updatedCard, err
+}
+
+// validateUpdateInput проверяет корректность входных данных для обновления карточки.
+func (s *Service) validateUpdateInput(input UpdateCardInput) error {
+	// Проверка количества тегов
+	if input.Tags != nil && len(input.Tags) > maxTagsPerCard {
+		return service.ErrInvalidInput
+	}
+
+	// Проверка длины каждого тега
+	for _, tag := range input.Tags {
+		if len(strings.TrimSpace(tag)) > maxTagNameLength {
+			return service.ErrInvalidInput
+		}
+	}
+
+	// Проверка переводов
+	for _, tr := range input.CustomTranslations {
+		if len(tr) > maxTranslationsLength {
+			return service.ErrInvalidInput
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {

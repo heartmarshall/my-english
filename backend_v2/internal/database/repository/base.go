@@ -213,6 +213,21 @@ func (r *Base[T]) InsertReturning(ctx context.Context, insert squirrel.InsertBui
 	return &dest, nil
 }
 
+// InsertReturningMany выполняет batch INSERT и возвращает все вставленные записи.
+// Используется для INSERT с ON CONFLICT, который может вернуть несколько строк.
+func (r *Base[T]) InsertReturningMany(ctx context.Context, insert squirrel.InsertBuilder) ([]T, error) {
+	sql, args, err := insert.ToSql()
+	if err != nil {
+		return nil, database.WrapDBError(err)
+	}
+
+	var dest []T
+	if err := pgxscan.Select(ctx, r.querier, &dest, sql, args...); err != nil {
+		return nil, database.WrapDBError(err)
+	}
+	return dest, nil
+}
+
 // Update выполняет UPDATE и возвращает количество затронутых строк.
 func (r *Base[T]) Update(ctx context.Context, update squirrel.UpdateBuilder) (int64, error) {
 	sql, args, err := update.ToSql()

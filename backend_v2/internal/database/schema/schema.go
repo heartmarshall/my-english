@@ -457,7 +457,7 @@ func (t SRSStatesTable) Columns() []string {
 }
 
 func (t SRSStatesTable) InsertColumns() []string {
-	return []string{"card_id", "status", "due_date", "algorithm_data"}
+	return []string{"card_id", "status", "due_date", "algorithm_data", "last_review_at"}
 }
 
 // --- ReviewLogs ---

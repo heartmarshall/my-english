@@ -2,7 +2,6 @@ package card
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"github.com/heartmarshall/my-english/internal/database"
@@ -10,11 +9,22 @@ import (
 	"github.com/heartmarshall/my-english/internal/service"
 )
 
+// Константы валидации
+const (
+	maxCustomTextLength   = 1000
+	maxTagNameLength      = 50
+	maxTagsPerCard        = 20
+	maxTranslationsLength = 500
+)
+
 func (s *Service) Create(ctx context.Context, input CreateCardInput) (*model.Card, error) {
-	// 1. Валидация
-	if input.SenseID == nil && (input.CustomText == nil || strings.TrimSpace(*input.CustomText) == "") {
-		return nil, service.ErrInvalidInput // Должен быть либо SenseID, либо CustomText
+	// 1. Валидация входных данных
+	if err := s.validateCreateInput(input); err != nil {
+		return nil, err
 	}
+
+	// Подготавливаем и дедуплицируем теги
+	uniqueTags := normalizeAndDeduplicateTags(input.Tags)
 
 	var createdCard *model.Card
 
@@ -65,41 +75,19 @@ func (s *Service) Create(ctx context.Context, input CreateCardInput) (*model.Car
 			return err
 		}
 
-		// --- D. Обрабатываем Теги ---
-		if len(input.Tags) > 0 {
+		// --- D. Обрабатываем Теги (используем атомарный GetOrCreate) ---
+		if len(uniqueTags) > 0 {
 			tagRepo := s.repos.Tag(tx)
 			cardTagRepo := s.repos.CardTag(tx)
 
-			for _, tagName := range input.Tags {
-				tagName = strings.TrimSpace(tagName)
-				if tagName == "" {
-					continue
-				}
-
-				// GetOrCreate Tag
-				// Пытаемся найти
-				tag, err := tagRepo.GetByName(ctx, tagName)
-				if err != nil && !errors.Is(err, database.ErrNotFound) {
+			for _, tagName := range uniqueTags {
+				// GetOrCreate использует ON CONFLICT, безопасно для параллельных запросов
+				tag, err := tagRepo.GetOrCreate(ctx, tagName)
+				if err != nil {
 					return err
 				}
 
-				// Если не нашли - создаем
-				if tag == nil {
-					tag, err = tagRepo.Create(ctx, &model.Tag{Name: tagName})
-					if err != nil {
-						// Если параллельно создали такой же тег (race condition), пробуем найти снова
-						if database.IsDuplicateError(err) {
-							tag, err = tagRepo.GetByName(ctx, tagName)
-							if err != nil {
-								return err
-							}
-						} else {
-							return err
-						}
-					}
-				}
-
-				// Привязываем к карточке
+				// Привязываем к карточке (Attach использует ON CONFLICT DO NOTHING)
 				if err := cardTagRepo.Attach(ctx, createdCard.ID, tag.ID); err != nil {
 					return err
 				}
@@ -114,4 +102,64 @@ func (s *Service) Create(ctx context.Context, input CreateCardInput) (*model.Car
 	}
 
 	return createdCard, nil
+}
+
+// validateCreateInput проверяет корректность входных данных для создания карточки.
+func (s *Service) validateCreateInput(input CreateCardInput) error {
+	// Должен быть либо SenseID, либо CustomText
+	hasCustomText := input.CustomText != nil && strings.TrimSpace(*input.CustomText) != ""
+	if input.SenseID == nil && !hasCustomText {
+		return service.ErrInvalidInput
+	}
+
+	// Проверка длины CustomText
+	if input.CustomText != nil && len(*input.CustomText) > maxCustomTextLength {
+		return service.ErrInvalidInput
+	}
+
+	// Проверка количества тегов
+	if len(input.Tags) > maxTagsPerCard {
+		return service.ErrInvalidInput
+	}
+
+	// Проверка длины каждого тега
+	for _, tag := range input.Tags {
+		if len(strings.TrimSpace(tag)) > maxTagNameLength {
+			return service.ErrInvalidInput
+		}
+	}
+
+	// Проверка переводов
+	for _, tr := range input.CustomTranslations {
+		if len(tr) > maxTranslationsLength {
+			return service.ErrInvalidInput
+		}
+	}
+
+	return nil
+}
+
+// normalizeAndDeduplicateTags нормализует и удаляет дубликаты тегов.
+func normalizeAndDeduplicateTags(tags []string) []string {
+	if len(tags) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(tags))
+
+	for _, tag := range tags {
+		normalized := strings.TrimSpace(tag)
+		if normalized == "" {
+			continue
+		}
+		// Приводим к нижнему регистру для дедупликации
+		key := strings.ToLower(normalized)
+		if !seen[key] {
+			seen[key] = true
+			result = append(result, normalized) // Сохраняем оригинальный регистр
+		}
+	}
+
+	return result
 }

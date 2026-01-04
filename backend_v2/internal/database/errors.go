@@ -30,8 +30,9 @@ const (
 )
 
 // IsNotFoundError проверяет, является ли ошибка "запись не найдена".
+// Проверяет как кастомный ErrNotFound, так и оригинальный pgx.ErrNoRows.
 func IsNotFoundError(err error) bool {
-	return errors.Is(err, pgx.ErrNoRows)
+	return errors.Is(err, ErrNotFound) || errors.Is(err, pgx.ErrNoRows)
 }
 
 // IsDuplicateError проверяет, является ли ошибка нарушением UNIQUE constraint.

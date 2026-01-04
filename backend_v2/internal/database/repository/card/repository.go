@@ -2,6 +2,7 @@ package card
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -11,6 +12,14 @@ import (
 	"github.com/heartmarshall/my-english/internal/database/schema"
 	"github.com/heartmarshall/my-english/internal/model"
 )
+
+// escapeLikePattern экранирует спецсимволы LIKE паттерна для безопасного поиска.
+func escapeLikePattern(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "%", "\\%")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	return s
+}
 
 // Repository работает с таблицей cards.
 type Repository struct {
@@ -98,18 +107,21 @@ func (r *Repository) ListWithFilters(
 
 	// Поиск по тексту (custom_text)
 	if searchText != nil && *searchText != "" {
-		searchPattern := "%" + *searchText + "%"
+		// Экранируем спецсимволы LIKE для безопасности
+		escaped := escapeLikePattern(*searchText)
+		searchPattern := "%" + escaped + "%"
 		// Поиск в custom_text (ILIKE для case-insensitive поиска)
 		query = query.Where(schema.Cards.CustomText.ILike(searchPattern))
 	}
 
-	// Применяем внешние опции (сортировка, лимит, офсет)
-	query = repository.ApplyOptions(query, opts...)
-
 	// Если был JOIN, нужно добавить DISTINCT, чтобы избежать дубликатов
+	// ВАЖНО: DISTINCT должен быть ДО LIMIT/OFFSET
 	if len(statuses) > 0 {
 		query = query.Distinct()
 	}
+
+	// Применяем внешние опции (сортировка, лимит, офсет) в конце
+	query = repository.ApplyOptions(query, opts...)
 
 	return r.List(ctx, query)
 }

@@ -8,12 +8,17 @@ import (
 	repository "github.com/heartmarshall/my-english/internal/database/repository/factory"
 	"github.com/heartmarshall/my-english/internal/model"
 	"github.com/heartmarshall/my-english/internal/service"
+	"golang.org/x/sync/singleflight"
 )
 
 type Service struct {
 	repos     *repository.Factory
 	txManager *database.TxManager
 	providers []Provider
+
+	// searchGroup дедуплицирует одновременные запросы на поиск одного и того же слова.
+	// Это предотвращает множественные запросы к внешним API и дублирование данных в БД.
+	searchGroup singleflight.Group
 }
 
 type Deps struct {

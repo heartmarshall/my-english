@@ -31,9 +31,9 @@ func (s *Service) Review(ctx context.Context, cardID uuid.UUID, grade int, durat
 		logRepo := s.repos.Review(tx)
 		cardRepo := s.repos.Card(tx)
 
-		// 1. Получаем текущее состояние SRS
-		// Если его нет (странно, но возможно), создаем дефолтное
-		currentState, err := srsRepo.GetByCardID(ctx, cardID)
+		// 1. Получаем текущее состояние SRS с блокировкой (FOR UPDATE)
+		// Это предотвращает race conditions при параллельных review запросах
+		currentState, err := srsRepo.GetByCardIDForUpdate(ctx, cardID)
 		if err != nil && !database.IsNotFoundError(err) {
 			return err
 		}
