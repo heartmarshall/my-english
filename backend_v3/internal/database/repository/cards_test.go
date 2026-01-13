@@ -200,9 +200,12 @@ func TestCardRepository_UpdateSRSFields(t *testing.T) {
 			intervalDays: 7,
 			easeFactor:   2.7,
 			setup: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectExec(`UPDATE cards`).
+				entryID := uuid.New()
+				rows := pgxmock.NewRows([]string{"id", "entry_id", "status", "next_review_at", "interval_days", "ease_factor", "created_at", "updated_at"}).
+					AddRow(cardID, entryID, model.StatusReview, &nextReview, 7, 2.7, now, now)
+				mock.ExpectQuery(`UPDATE cards`).
 					WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
-					WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+					WillReturnRows(rows)
 			},
 			wantErr: false,
 		},
@@ -214,11 +217,11 @@ func TestCardRepository_UpdateSRSFields(t *testing.T) {
 			intervalDays: 0,
 			easeFactor:   2.5,
 			setup: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectExec(`UPDATE cards`).
+				mock.ExpectQuery(`UPDATE cards`).
 					WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
-					WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+					WillReturnError(pgx.ErrNoRows)
 			},
-			wantErr: false, // Update не возвращает ошибку при 0 rows
+			wantErr: true, // Update возвращает ErrNotFound при 0 rows
 		},
 	}
 

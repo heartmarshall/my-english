@@ -139,13 +139,21 @@ func (r *Base[T]) BatchInsertReturning(ctx context.Context, columns []string, it
 	return dest, nil
 }
 
-func (r *Base[T]) Update(ctx context.Context, update squirrel.UpdateBuilder) error {
-	sql, args, err := update.ToSql()
+func (r *Base[T]) Update(ctx context.Context, update squirrel.UpdateBuilder) (*T, error) {
+	query := update.Suffix("RETURNING *")
+	sql, args, err := query.ToSql()
 	if err != nil {
-		return database.WrapDBError(err)
+		return nil, database.WrapDBError(err)
 	}
-	_, err = r.querier.Exec(ctx, sql, args...)
-	return database.WrapDBError(err)
+
+	var dest T
+	if err := pgxscan.Get(ctx, r.querier, &dest, sql, args...); err != nil {
+		if pgxscan.NotFound(err) {
+			return nil, database.ErrNotFound
+		}
+		return nil, database.WrapDBError(err)
+	}
+	return &dest, nil
 }
 
 func (r *Base[T]) Delete(ctx context.Context, idColumn string, id any) error {

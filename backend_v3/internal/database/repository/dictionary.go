@@ -86,7 +86,7 @@ func (r *DictionaryRepository) applyFilters(b squirrel.SelectBuilder, f Dictiona
 			b = b.Where(squirrel.ILike{textCol: cleanQuery + "%"})
 		} else {
 			// Fuzzy search via pg_trgm for longer words
-			b = b.Where(squirrel.Expr("? % ?", schema.DictionaryEntries.Text, cleanQuery))
+			b = b.Where(squirrel.Expr("? % ?", schema.DictionaryEntries.Text.String(), cleanQuery))
 		}
 	}
 
@@ -130,7 +130,7 @@ func (r *DictionaryRepository) Find(ctx context.Context, f DictionaryFilter) ([]
 			b = b.OrderBy(textCol + " ASC")
 		} else {
 			// Длинные: расстояние триграмм
-			b = b.OrderByClause("? <-> ? ASC", schema.DictionaryEntries.Text, cleanQuery)
+			b = b.OrderByClause("? <-> ? ASC", schema.DictionaryEntries.Text.String(), cleanQuery)
 		}
 		appliedSort = true
 	}
@@ -182,18 +182,24 @@ func (r *DictionaryRepository) Create(ctx context.Context, entry *model.Dictiona
 }
 
 // CreateOrGet создает новое слово или возвращает существующее по text_normalized
+// Использует атомарную операцию INSERT ... ON CONFLICT для предотвращения race condition
 func (r *DictionaryRepository) CreateOrGet(ctx context.Context, entry *model.DictionaryEntry) (*model.DictionaryEntry, error) {
-	// Сначала проверяем существование
-	existing, err := r.FindByNormalizedText(ctx, entry.TextNormalized)
-	if err == nil {
-		return existing, nil
-	}
-	if err != database.ErrNotFound {
-		return nil, err
+	insert := r.InsertBuilder().
+		Columns(schema.DictionaryEntries.InsertColumns()...).
+		Values(entry.Text, entry.TextNormalized).
+		Suffix("ON CONFLICT (text_normalized) DO UPDATE SET id = dictionary_entries.id RETURNING *")
+
+	sql, args, err := insert.ToSql()
+	if err != nil {
+		return nil, database.WrapDBError(err)
 	}
 
-	// Слова нет, создаем новое
-	return r.Create(ctx, entry)
+	var result model.DictionaryEntry
+	if err := pgxscan.Get(ctx, r.Q(), &result, sql, args...); err != nil {
+		return nil, database.WrapDBError(err)
+	}
+
+	return &result, nil
 }
 
 // Update обновляет слово
@@ -201,22 +207,9 @@ func (r *DictionaryRepository) Update(ctx context.Context, id uuid.UUID, entry *
 	update := r.UpdateBuilder().
 		Set("text", entry.Text).
 		Set("text_normalized", entry.TextNormalized).
-		Where(squirrel.Eq{schema.DictionaryEntries.ID.String(): id}).
-		Suffix("RETURNING *")
+		Where(squirrel.Eq{schema.DictionaryEntries.ID.String(): id})
 
-	sql, args, err := update.ToSql()
-	if err != nil {
-		return nil, database.WrapDBError(err)
-	}
-
-	var result model.DictionaryEntry
-	if err := pgxscan.Get(ctx, r.Q(), &result, sql, args...); err != nil {
-		if pgxscan.NotFound(err) {
-			return nil, database.ErrNotFound
-		}
-		return nil, database.WrapDBError(err)
-	}
-	return &result, nil
+	return r.Base.Update(ctx, update)
 }
 
 // Delete удаляет слово (CASCADE удалит связанные данные)

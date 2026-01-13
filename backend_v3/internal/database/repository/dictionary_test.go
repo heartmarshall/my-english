@@ -71,7 +71,7 @@ func TestDictionaryRepository_CreateOrGet(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "returns existing entry",
+			name: "returns existing entry on conflict",
 			entry: &model.DictionaryEntry{
 				Text:           "Hello",
 				TextNormalized: "hello",
@@ -81,8 +81,9 @@ func TestDictionaryRepository_CreateOrGet(t *testing.T) {
 				now := time.Now()
 				rows := pgxmock.NewRows([]string{"id", "text", "text_normalized", "created_at", "updated_at"}).
 					AddRow(entryID, "Hello", "hello", now, now)
-				mock.ExpectQuery(`SELECT`).
-					WithArgs("hello").
+				// Атомарный INSERT ... ON CONFLICT возвращает существующую запись
+				mock.ExpectQuery(`INSERT INTO dictionary_entries`).
+					WithArgs("Hello", "hello").
 					WillReturnRows(rows)
 			},
 			wantErr: false,
@@ -94,15 +95,11 @@ func TestDictionaryRepository_CreateOrGet(t *testing.T) {
 				TextNormalized: "world",
 			},
 			setup: func(mock pgxmock.PgxPoolIface) {
-				// First query - not found
-				mock.ExpectQuery(`SELECT`).
-					WithArgs("world").
-					WillReturnError(pgx.ErrNoRows)
-				// Second query - create
 				entryID := uuid.New()
 				now := time.Now()
 				rows := pgxmock.NewRows([]string{"id", "text", "text_normalized", "created_at", "updated_at"}).
 					AddRow(entryID, "World", "world", now, now)
+				// Атомарный INSERT ... ON CONFLICT создает новую запись
 				mock.ExpectQuery(`INSERT INTO dictionary_entries`).
 					WithArgs("World", "world").
 					WillReturnRows(rows)

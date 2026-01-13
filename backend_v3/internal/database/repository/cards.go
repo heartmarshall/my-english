@@ -106,22 +106,9 @@ func (r *CardRepository) Update(ctx context.Context, id uuid.UUID, card *model.C
 		Set("next_review_at", card.NextReviewAt).
 		Set("interval_days", card.IntervalDays).
 		Set("ease_factor", card.EaseFactor).
-		Where(squirrel.Eq{schema.Cards.ID.String(): id}).
-		Suffix("RETURNING *")
+		Where(squirrel.Eq{schema.Cards.ID.String(): id})
 
-	sql, args, err := update.ToSql()
-	if err != nil {
-		return nil, database.WrapDBError(err)
-	}
-
-	var result model.Card
-	if err := pgxscan.Get(ctx, r.Q(), &result, sql, args...); err != nil {
-		if pgxscan.NotFound(err) {
-			return nil, database.ErrNotFound
-		}
-		return nil, database.WrapDBError(err)
-	}
-	return &result, nil
+	return r.Base.Update(ctx, update)
 }
 
 // UpdateSRSFields обновляет только SRS поля карточки
@@ -133,7 +120,8 @@ func (r *CardRepository) UpdateSRSFields(ctx context.Context, id uuid.UUID, stat
 		Set("ease_factor", easeFactor).
 		Where(squirrel.Eq{schema.Cards.ID.String(): id})
 
-	return r.Base.Update(ctx, update)
+	_, err := r.Base.Update(ctx, update)
+	return err
 }
 
 // Delete удаляет карточку
