@@ -1,4 +1,4 @@
-package repository
+package dictionary
 
 import (
 	"context"
@@ -36,6 +36,30 @@ func TestDictionaryRepository_Create(t *testing.T) {
 					WillReturnRows(rows)
 			},
 			wantErr: false,
+		},
+		{
+			name:    "nil entry",
+			entry:   nil,
+			setup:   func(mock pgxmock.PgxPoolIface) {},
+			wantErr: true,
+		},
+		{
+			name: "empty text",
+			entry: &model.DictionaryEntry{
+				Text:           "",
+				TextNormalized: "hello",
+			},
+			setup:   func(mock pgxmock.PgxPoolIface) {},
+			wantErr: true,
+		},
+		{
+			name: "empty text_normalized",
+			entry: &model.DictionaryEntry{
+				Text:           "Hello",
+				TextNormalized: "",
+			},
+			setup:   func(mock pgxmock.PgxPoolIface) {},
+			wantErr: true,
 		},
 	}
 
@@ -81,7 +105,6 @@ func TestDictionaryRepository_CreateOrGet(t *testing.T) {
 				now := time.Now()
 				rows := pgxmock.NewRows([]string{"id", "text", "text_normalized", "created_at", "updated_at"}).
 					AddRow(entryID, "Hello", "hello", now, now)
-				// Атомарный INSERT ... ON CONFLICT возвращает существующую запись
 				mock.ExpectQuery(`INSERT INTO dictionary_entries`).
 					WithArgs("Hello", "hello").
 					WillReturnRows(rows)
@@ -99,7 +122,6 @@ func TestDictionaryRepository_CreateOrGet(t *testing.T) {
 				now := time.Now()
 				rows := pgxmock.NewRows([]string{"id", "text", "text_normalized", "created_at", "updated_at"}).
 					AddRow(entryID, "World", "world", now, now)
-				// Атомарный INSERT ... ON CONFLICT создает новую запись
 				mock.ExpectQuery(`INSERT INTO dictionary_entries`).
 					WithArgs("World", "world").
 					WillReturnRows(rows)
@@ -125,6 +147,70 @@ func TestDictionaryRepository_CreateOrGet(t *testing.T) {
 
 			if !tt.wantErr && result == nil {
 				t.Error("CreateOrGet() returned nil result")
+			}
+
+			testutil.ExpectationsWereMet(t, mock)
+		})
+	}
+}
+
+func TestDictionaryRepository_GetByID(t *testing.T) {
+	entryID := uuid.New()
+	now := time.Now()
+
+	tests := []struct {
+		name    string
+		id      uuid.UUID
+		setup   func(mock pgxmock.PgxPoolIface)
+		wantErr bool
+	}{
+		{
+			name: "found",
+			id:   entryID,
+			setup: func(mock pgxmock.PgxPoolIface) {
+				rows := pgxmock.NewRows([]string{"id", "text", "text_normalized", "created_at", "updated_at"}).
+					AddRow(entryID, "Hello", "hello", now, now)
+				mock.ExpectQuery(`SELECT`).
+					WithArgs(pgxmock.AnyArg()).
+					WillReturnRows(rows)
+			},
+			wantErr: false,
+		},
+		{
+			name: "not found",
+			id:   entryID,
+			setup: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery(`SELECT`).
+					WithArgs(pgxmock.AnyArg()).
+					WillReturnError(pgx.ErrNoRows)
+			},
+			wantErr: true,
+		},
+		{
+			name:    "zero uuid",
+			id:      uuid.UUID{},
+			setup:   func(mock pgxmock.PgxPoolIface) {},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			querier, mock := testutil.NewMockQuerier(t)
+			repo := NewDictionaryRepository(querier)
+
+			tt.setup(mock)
+
+			ctx := context.Background()
+			result, err := repo.GetByID(ctx, tt.id)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetByID() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr && result == nil {
+				t.Error("GetByID() returned nil result")
 			}
 
 			testutil.ExpectationsWereMet(t, mock)
@@ -171,6 +257,13 @@ func TestDictionaryRepository_Update(t *testing.T) {
 					WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 					WillReturnError(pgx.ErrNoRows)
 			},
+			wantErr: true,
+		},
+		{
+			name:    "zero uuid",
+			id:      uuid.UUID{},
+			entry:   &model.DictionaryEntry{Text: "Hello", TextNormalized: "hello"},
+			setup:   func(mock pgxmock.PgxPoolIface) {},
 			wantErr: true,
 		},
 	}
@@ -228,6 +321,12 @@ func TestDictionaryRepository_Delete(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name:    "zero uuid",
+			id:      uuid.UUID{},
+			setup:   func(mock pgxmock.PgxPoolIface) {},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -242,12 +341,6 @@ func TestDictionaryRepository_Delete(t *testing.T) {
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Delete() error = %v, wantErr %v", err, tt.wantErr)
-			}
-
-			if !tt.wantErr && err != nil {
-				if err != database.ErrNotFound {
-					t.Errorf("Delete() unexpected error = %v", err)
-				}
 			}
 
 			testutil.ExpectationsWereMet(t, mock)
@@ -285,6 +378,13 @@ func TestDictionaryRepository_ExistsByNormalizedText(t *testing.T) {
 			},
 			want:    false,
 			wantErr: false,
+		},
+		{
+			name:    "empty text",
+			text:    "",
+			setup:   func(mock pgxmock.PgxPoolIface) {},
+			want:    false,
+			wantErr: true,
 		},
 	}
 
@@ -344,6 +444,12 @@ func TestDictionaryRepository_FindByNormalizedText(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name:    "empty text",
+			text:    "",
+			setup:   func(mock pgxmock.PgxPoolIface) {},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -365,8 +471,8 @@ func TestDictionaryRepository_FindByNormalizedText(t *testing.T) {
 				t.Error("FindByNormalizedText() returned nil result")
 			}
 
-			if tt.wantErr && err != database.ErrNotFound {
-				t.Errorf("FindByNormalizedText() expected ErrNotFound, got %v", err)
+			if tt.wantErr && !database.IsNotFoundError(err) && tt.text != "" {
+				t.Errorf("FindByNormalizedText() expected ErrNotFound for valid text, got %v", err)
 			}
 
 			testutil.ExpectationsWereMet(t, mock)
@@ -400,9 +506,8 @@ func TestDictionaryRepository_CountTotal(t *testing.T) {
 			},
 			setup: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{"count"}).AddRow(int64(5))
-				// Fuzzy search генерирует SQL с оператором % и двумя аргументами
 				mock.ExpectQuery(`SELECT COUNT`).
-					WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+					WithArgs(pgxmock.AnyArg()).
 					WillReturnRows(rows)
 			},
 			want:    5,
@@ -430,6 +535,82 @@ func TestDictionaryRepository_CountTotal(t *testing.T) {
 			}
 
 			testutil.ExpectationsWereMet(t, mock)
+		})
+	}
+}
+
+func TestDictionaryFilter_Normalize(t *testing.T) {
+	tests := []struct {
+		name   string
+		filter DictionaryFilter
+		want   DictionaryFilter
+	}{
+		{
+			name:   "default values",
+			filter: DictionaryFilter{},
+			want: DictionaryFilter{
+				Limit:  DefaultLimit,
+				Offset: 0,
+			},
+		},
+		{
+			name: "negative limit",
+			filter: DictionaryFilter{
+				Limit: -10,
+			},
+			want: DictionaryFilter{
+				Limit:  DefaultLimit,
+				Offset: 0,
+			},
+		},
+		{
+			name: "exceeds max limit",
+			filter: DictionaryFilter{
+				Limit: 5000,
+			},
+			want: DictionaryFilter{
+				Limit:  MaxLimit,
+				Offset: 0,
+			},
+		},
+		{
+			name: "negative offset",
+			filter: DictionaryFilter{
+				Limit:  50,
+				Offset: -5,
+			},
+			want: DictionaryFilter{
+				Limit:  50,
+				Offset: 0,
+			},
+		},
+		{
+			name: "trims search",
+			filter: DictionaryFilter{
+				Search: "  hello  ",
+				Limit:  50,
+			},
+			want: DictionaryFilter{
+				Search: "hello",
+				Limit:  50,
+				Offset: 0,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.filter.Normalize()
+
+			if tt.filter.Limit != tt.want.Limit {
+				t.Errorf("Normalize() Limit = %v, want %v", tt.filter.Limit, tt.want.Limit)
+			}
+			if tt.filter.Offset != tt.want.Offset {
+				t.Errorf("Normalize() Offset = %v, want %v", tt.filter.Offset, tt.want.Offset)
+			}
+			if tt.filter.Search != tt.want.Search {
+				t.Errorf("Normalize() Search = %v, want %v", tt.filter.Search, tt.want.Search)
+			}
 		})
 	}
 }

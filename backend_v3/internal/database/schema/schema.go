@@ -88,14 +88,14 @@ func (t DictionaryEntriesTable) InsertColumns() []string {
 // ============================================================================
 
 type SensesTable struct {
-	Name          Table
-	ID            Column
-	EntryID       Column
-	Definition    Column
-	PartOfSpeech  Column
-	SourceSlug    Column
-	CefrLevel     Column
-	CreatedAt     Column
+	Name         Table
+	ID           Column
+	EntryID      Column
+	Definition   Column
+	PartOfSpeech Column
+	SourceSlug   Column
+	CefrLevel    Column
+	CreatedAt    Column
 }
 
 var Senses = SensesTable{
@@ -236,7 +236,7 @@ type PronunciationsTable struct {
 var Pronunciations = PronunciationsTable{
 	Name:          "pronunciations",
 	ID:            "pronunciations.id",
-	EntryID:      "pronunciations.entry_id",
+	EntryID:       "pronunciations.entry_id",
 	AudioURL:      "pronunciations.audio_url",
 	Transcription: "pronunciations.transcription",
 	Region:        "pronunciations.region",
@@ -299,12 +299,12 @@ func (t CardsTable) InsertColumns() []string {
 // ============================================================================
 
 type ReviewLogsTable struct {
-	Name        Table
-	ID          Column
-	CardID      Column
-	Grade       Column
-	DurationMs  Column
-	ReviewedAt  Column
+	Name       Table
+	ID         Column
+	CardID     Column
+	Grade      Column
+	DurationMs Column
+	ReviewedAt Column
 }
 
 var ReviewLogs = ReviewLogsTable{
