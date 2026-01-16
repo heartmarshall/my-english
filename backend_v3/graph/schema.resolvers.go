@@ -51,7 +51,11 @@ func (r *cardResolver) ReviewHistory(ctx context.Context, obj *model.Card, limit
 // Pronunciations is the resolver for the pronunciations field.
 func (r *dictionaryEntryResolver) Pronunciations(ctx context.Context, obj *model.DictionaryEntry) ([]*model.Pronunciation, error) {
 	// Используем DataLoader
-	items, err := dataloader.For(ctx).PronunciationsByEntryID.Load(ctx, obj.ID)
+	loaders, err := dataloader.MustFor(ctx)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+	items, err := loaders.PronunciationsByEntryID.Load(ctx, obj.ID)
 	if err != nil {
 		return nil, transport.HandleError(ctx, err)
 	}
@@ -65,7 +69,11 @@ func (r *dictionaryEntryResolver) Pronunciations(ctx context.Context, obj *model
 
 // Images is the resolver for the images field.
 func (r *dictionaryEntryResolver) Images(ctx context.Context, obj *model.DictionaryEntry) ([]*model.Image, error) {
-	items, err := dataloader.For(ctx).ImagesByEntryID.Load(ctx, obj.ID)
+	loaders, err := dataloader.MustFor(ctx)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+	items, err := loaders.ImagesByEntryID.Load(ctx, obj.ID)
 	if err != nil {
 		return nil, transport.HandleError(ctx, err)
 	}
@@ -78,7 +86,11 @@ func (r *dictionaryEntryResolver) Images(ctx context.Context, obj *model.Diction
 
 // Senses is the resolver for the senses field.
 func (r *dictionaryEntryResolver) Senses(ctx context.Context, obj *model.DictionaryEntry) ([]*model.Sense, error) {
-	items, err := dataloader.For(ctx).SensesByEntryID.Load(ctx, obj.ID)
+	loaders, err := dataloader.MustFor(ctx)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+	items, err := loaders.SensesByEntryID.Load(ctx, obj.ID)
 	if err != nil {
 		return nil, transport.HandleError(ctx, err)
 	}
@@ -91,7 +103,11 @@ func (r *dictionaryEntryResolver) Senses(ctx context.Context, obj *model.Diction
 
 // Card is the resolver for the card field.
 func (r *dictionaryEntryResolver) Card(ctx context.Context, obj *model.DictionaryEntry) (*model.Card, error) {
-	card, err := dataloader.For(ctx).CardByEntryID.Load(ctx, obj.ID)
+	loaders, err := dataloader.MustFor(ctx)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+	card, err := loaders.CardByEntryID.Load(ctx, obj.ID)
 	if err != nil {
 		return nil, transport.HandleError(ctx, err)
 	}
@@ -100,7 +116,11 @@ func (r *dictionaryEntryResolver) Card(ctx context.Context, obj *model.Dictionar
 
 // CardEnabled is the resolver for the cardEnabled field.
 func (r *dictionaryEntryResolver) CardEnabled(ctx context.Context, obj *model.DictionaryEntry) (bool, error) {
-	card, err := dataloader.For(ctx).CardByEntryID.Load(ctx, obj.ID)
+	loaders, err := dataloader.MustFor(ctx)
+	if err != nil {
+		return false, transport.HandleError(ctx, err)
+	}
+	card, err := loaders.CardByEntryID.Load(ctx, obj.ID)
 	if err != nil {
 		return false, transport.HandleError(ctx, err)
 	}
@@ -329,7 +349,11 @@ func (r *queryResolver) DashboardStats(ctx context.Context) (*model1.DashboardSt
 
 // Translations is the resolver for the translations field.
 func (r *senseResolver) Translations(ctx context.Context, obj *model.Sense) ([]*model.Translation, error) {
-	items, err := dataloader.For(ctx).TranslationsBySenseID.Load(ctx, obj.ID)
+	loaders, err := dataloader.MustFor(ctx)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+	items, err := loaders.TranslationsBySenseID.Load(ctx, obj.ID)
 	if err != nil {
 		return nil, transport.HandleError(ctx, err)
 	}
@@ -342,7 +366,11 @@ func (r *senseResolver) Translations(ctx context.Context, obj *model.Sense) ([]*
 
 // Examples is the resolver for the examples field.
 func (r *senseResolver) Examples(ctx context.Context, obj *model.Sense) ([]*model.Example, error) {
-	items, err := dataloader.For(ctx).ExamplesBySenseID.Load(ctx, obj.ID)
+	loaders, err := dataloader.MustFor(ctx)
+	if err != nil {
+		return nil, transport.HandleError(ctx, err)
+	}
+	items, err := loaders.ExamplesBySenseID.Load(ctx, obj.ID)
 	if err != nil {
 		return nil, transport.HandleError(ctx, err)
 	}

@@ -3,6 +3,7 @@ package dataloader
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/heartmarshall/my-english/internal/database/repository"
@@ -17,11 +18,18 @@ import (
 // 3. Расставить по порядку входных ключей.
 // ============================================================================
 
-func newSensesByEntryIDFetcher(repo repository.SenseRepository) func(context.Context, []uuid.UUID) ([]([]model.Sense), []error) {
+func newSensesByEntryIDFetcher(repo repository.SenseRepository, logger *slog.Logger) func(context.Context, []uuid.UUID) ([]([]model.Sense), []error) {
 	return func(ctx context.Context, keys []uuid.UUID) ([]([]model.Sense), []error) {
 		// 1. Запрос в БД
 		items, err := repo.ListByEntryIDs(ctx, keys)
 		if err != nil {
+			// Логируем ошибку, если logger доступен
+			if logger != nil {
+				logger.Error("failed to fetch senses",
+					slog.Int("count", len(keys)),
+					slog.Any("error", err),
+				)
+			}
 			// Если ошибка БД, возвращаем её для каждого ключа
 			errors := make([]error, len(keys))
 			for i := range errors {
@@ -47,10 +55,16 @@ func newSensesByEntryIDFetcher(repo repository.SenseRepository) func(context.Con
 	}
 }
 
-func newImagesByEntryIDFetcher(repo repository.ImageRepository) func(context.Context, []uuid.UUID) ([]([]model.Image), []error) {
+func newImagesByEntryIDFetcher(repo repository.ImageRepository, logger *slog.Logger) func(context.Context, []uuid.UUID) ([]([]model.Image), []error) {
 	return func(ctx context.Context, keys []uuid.UUID) ([]([]model.Image), []error) {
 		items, err := repo.ListByEntryIDs(ctx, keys)
 		if err != nil {
+			if logger != nil {
+				logger.Error("failed to fetch images",
+					slog.Int("count", len(keys)),
+					slog.Any("error", err),
+				)
+			}
 			errors := make([]error, len(keys))
 			for i := range errors {
 				errors[i] = fmt.Errorf("fetch images: %w", err)
@@ -72,10 +86,16 @@ func newImagesByEntryIDFetcher(repo repository.ImageRepository) func(context.Con
 	}
 }
 
-func newPronunciationsByEntryIDFetcher(repo repository.PronunciationRepository) func(context.Context, []uuid.UUID) ([]([]model.Pronunciation), []error) {
+func newPronunciationsByEntryIDFetcher(repo repository.PronunciationRepository, logger *slog.Logger) func(context.Context, []uuid.UUID) ([]([]model.Pronunciation), []error) {
 	return func(ctx context.Context, keys []uuid.UUID) ([]([]model.Pronunciation), []error) {
 		items, err := repo.ListByEntryIDs(ctx, keys)
 		if err != nil {
+			if logger != nil {
+				logger.Error("failed to fetch pronunciations",
+					slog.Int("count", len(keys)),
+					slog.Any("error", err),
+				)
+			}
 			errors := make([]error, len(keys))
 			for i := range errors {
 				errors[i] = fmt.Errorf("fetch pronunciations: %w", err)
@@ -97,10 +117,16 @@ func newPronunciationsByEntryIDFetcher(repo repository.PronunciationRepository) 
 	}
 }
 
-func newExamplesBySenseIDFetcher(repo repository.ExampleRepository) func(context.Context, []uuid.UUID) ([]([]model.Example), []error) {
+func newExamplesBySenseIDFetcher(repo repository.ExampleRepository, logger *slog.Logger) func(context.Context, []uuid.UUID) ([]([]model.Example), []error) {
 	return func(ctx context.Context, keys []uuid.UUID) ([]([]model.Example), []error) {
 		items, err := repo.ListBySenseIDs(ctx, keys)
 		if err != nil {
+			if logger != nil {
+				logger.Error("failed to fetch examples",
+					slog.Int("count", len(keys)),
+					slog.Any("error", err),
+				)
+			}
 			errors := make([]error, len(keys))
 			for i := range errors {
 				errors[i] = fmt.Errorf("fetch examples: %w", err)
@@ -122,10 +148,16 @@ func newExamplesBySenseIDFetcher(repo repository.ExampleRepository) func(context
 	}
 }
 
-func newTranslationsBySenseIDFetcher(repo repository.TranslationRepository) func(context.Context, []uuid.UUID) ([]([]model.Translation), []error) {
+func newTranslationsBySenseIDFetcher(repo repository.TranslationRepository, logger *slog.Logger) func(context.Context, []uuid.UUID) ([]([]model.Translation), []error) {
 	return func(ctx context.Context, keys []uuid.UUID) ([]([]model.Translation), []error) {
 		items, err := repo.ListBySenseIDs(ctx, keys)
 		if err != nil {
+			if logger != nil {
+				logger.Error("failed to fetch translations",
+					slog.Int("count", len(keys)),
+					slog.Any("error", err),
+				)
+			}
 			errors := make([]error, len(keys))
 			for i := range errors {
 				errors[i] = fmt.Errorf("fetch translations: %w", err)
@@ -152,10 +184,16 @@ func newTranslationsBySenseIDFetcher(repo repository.TranslationRepository) func
 // Паттерн для nullable связей (Card может не быть у слова).
 // ============================================================================
 
-func newCardByEntryIDFetcher(repo repository.CardRepository) func(context.Context, []uuid.UUID) ([]*model.Card, []error) {
+func newCardByEntryIDFetcher(repo repository.CardRepository, logger *slog.Logger) func(context.Context, []uuid.UUID) ([]*model.Card, []error) {
 	return func(ctx context.Context, keys []uuid.UUID) ([]*model.Card, []error) {
 		items, err := repo.ListByEntryIDs(ctx, keys)
 		if err != nil {
+			if logger != nil {
+				logger.Error("failed to fetch cards",
+					slog.Int("count", len(keys)),
+					slog.Any("error", err),
+				)
+			}
 			errors := make([]error, len(keys))
 			for i := range errors {
 				errors[i] = fmt.Errorf("fetch cards: %w", err)

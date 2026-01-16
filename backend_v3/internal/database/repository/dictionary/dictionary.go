@@ -226,7 +226,8 @@ func (r *DictionaryRepository) applyFilters(b squirrel.SelectBuilder, f Dictiona
 			// Используем оператор similarity (%)
 			// Требует расширения: CREATE EXTENSION IF NOT EXISTS pg_trgm;
 			// Рекомендуется GIN индекс: CREATE INDEX idx_text_trgm ON dictionary_entries USING GIN(text gin_trgm_ops);
-			b = b.Where(squirrel.Expr(textCol+" % $1", f.Search))
+			// Используем ? вместо $1, чтобы squirrel автоматически нумеровал параметры
+			b = b.Where(squirrel.Expr(textCol+" % ?", f.Search))
 		}
 	}
 
@@ -262,7 +263,10 @@ func (r *DictionaryRepository) applySorting(b squirrel.SelectBuilder, f Dictiona
 			return b.OrderBy("LENGTH("+textCol+") ASC", textCol+" ASC")
 		}
 		// Длинные запросы: сортировка по similarity distance
-		return b.OrderByClause(textCol+" <-> ? ASC", f.Search)
+		// Используем OrderByClause с ? - squirrel автоматически преобразует ? в правильный $N
+		// Проблема была в том, что orderArgs из squirrel.Expr конфликтовал с параметрами WHERE
+		// Поэтому используем простой подход: передаем SQL строку с ? и значение напрямую
+		return b.OrderByClause(fmt.Sprintf("%s <-> ? ASC", textCol), f.Search)
 	}
 
 	// C. Дефолтная сортировка: новые первыми

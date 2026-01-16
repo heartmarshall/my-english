@@ -82,11 +82,18 @@ func (s *LearningStatus) Scan(value any) error {
 	if value == nil {
 		return nil
 	}
-	v, ok := value.([]byte)
-	if !ok {
-		return fmt.Errorf("failed to scan LearningStatus: %v", value)
+	
+	var str string
+	switch v := value.(type) {
+	case []byte:
+		str = string(v)
+	case string:
+		str = v
+	default:
+		return fmt.Errorf("failed to scan LearningStatus: %v (type %T)", value, value)
 	}
-	*s = LearningStatus(v)
+	
+	*s = LearningStatus(str)
 	return nil
 }
 
