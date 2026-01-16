@@ -2,181 +2,270 @@ package dictionary
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/heartmarshall/my-english/internal/database"
 	"github.com/heartmarshall/my-english/internal/database/repository"
 	"github.com/heartmarshall/my-english/internal/model"
-	"github.com/heartmarshall/my-english/internal/service/types"
 )
 
+// Service реализует бизнес-логику для работы со словарем.
 type Service struct {
 	repos *repository.Registry
 	tx    *database.TxManager
 }
 
-func NewService(repos *repository.Registry, tx *database.TxManager) *Service {
+// NewService создает новый экземпляр сервиса словаря.
+func NewService(repos *repository.Registry, tx *database.TxManager) (*Service, error) {
+	if repos == nil {
+		return nil, fmt.Errorf("repos cannot be nil")
+	}
+	if tx == nil {
+		return nil, fmt.Errorf("tx cannot be nil")
+	}
+
 	return &Service{
 		repos: repos,
 		tx:    tx,
-	}
+	}, nil
 }
 
 // CreateWord создает слово и все связанные сущности атомарно.
+// Метод выполняет валидацию входных данных, проверку на дубликаты,
+// создание основной записи и всех связанных сущностей (смыслы, переводы,
+// примеры, изображения, произношения), а также опционально создает карточку для изучения.
 func (s *Service) CreateWord(ctx context.Context, input CreateWordInput) (*model.DictionaryEntry, error) {
-	// 1. Нормализация и валидация
-	textRaw := strings.TrimSpace(input.Text)
-	textNorm := normalizeText(textRaw)
-
-	if textRaw == "" {
-		return nil, errors.New("text cannot be empty")
-	}
-
-	var createdEntry *model.DictionaryEntry
-
-	// 2. Транзакция
-	err := s.tx.RunInTx(ctx, func(ctx context.Context, _ database.Querier) error {
-		// A. Проверяем дубликат
-		exists, err := s.repos.Dictionary.ExistsByNormalizedText(ctx, textNorm)
-		if err != nil {
-			return err
-		}
-		if exists {
-			return types.ErrAlreadyExists
-		}
-
-		// B. Создаем основную запись (Entry)
-		entry := &model.DictionaryEntry{
-			Text:           textRaw,
-			TextNormalized: textNorm,
-		}
-		createdEntry, err = s.repos.Dictionary.Create(ctx, entry)
-		if err != nil {
-			return err
-		}
-
-		// C. Создаем смыслы (Senses) и вложенные в них сущности
-		// Примечание: Insert Senses делаем в цикле, так как нам нужны ID созданных смыслов
-		// для вставки переводов и примеров.
-		for _, senseIn := range input.Senses {
-			sense := &model.Sense{
-				EntryID:      createdEntry.ID,
-				Definition:   senseIn.Definition,
-				PartOfSpeech: senseIn.PartOfSpeech,
-				SourceSlug:   senseIn.SourceSlug,
-			}
-
-			createdSense, err := s.repos.Senses.Create(ctx, sense)
-			if err != nil {
-				return err
-			}
-
-			// C.1 Переводы (Translations) - Batch Insert
-			if len(senseIn.Translations) > 0 {
-				translations := make([]model.Translation, len(senseIn.Translations))
-				for i, tr := range senseIn.Translations {
-					translations[i] = model.Translation{
-						SenseID:    createdSense.ID,
-						Text:       tr.Text,
-						SourceSlug: tr.SourceSlug,
-					}
-				}
-				if _, err := s.repos.Translations.BatchCreate(ctx, translations); err != nil {
-					return err
-				}
-			}
-
-			// C.2 Примеры (Examples) - Batch Insert
-			if len(senseIn.Examples) > 0 {
-				examples := make([]model.Example, len(senseIn.Examples))
-				for i, ex := range senseIn.Examples {
-					examples[i] = model.Example{
-						SenseID:     createdSense.ID,
-						Sentence:    ex.Sentence,
-						Translation: ex.Translation,
-						SourceSlug:  ex.SourceSlug,
-					}
-				}
-				if _, err := s.repos.Examples.BatchCreate(ctx, examples); err != nil {
-					return err
-				}
-			}
-		}
-
-		// D. Изображения (Images) - Batch Insert
-		if len(input.Images) > 0 {
-			images := make([]model.Image, len(input.Images))
-			for i, img := range input.Images {
-				images[i] = model.Image{
-					EntryID:    createdEntry.ID,
-					URL:        img.URL,
-					Caption:    img.Caption,
-					SourceSlug: img.SourceSlug,
-				}
-			}
-			if _, err := s.repos.Images.BatchCreate(ctx, images); err != nil {
-				return err
-			}
-		}
-
-		// E. Произношения (Pronunciations) - Batch Insert
-		if len(input.Pronunciations) > 0 {
-			prons := make([]model.Pronunciation, len(input.Pronunciations))
-			for i, p := range input.Pronunciations {
-				prons[i] = model.Pronunciation{
-					EntryID:       createdEntry.ID,
-					AudioURL:      p.AudioURL,
-					Transcription: p.Transcription,
-					Region:        p.Region,
-					SourceSlug:    p.SourceSlug,
-				}
-			}
-			if _, err := s.repos.Pronunciations.BatchCreate(ctx, prons); err != nil {
-				return err
-			}
-		}
-
-		// F. Карточка для изучения (Card) - Опционально
-		if input.CreateCard {
-			card := &model.Card{
-				EntryID:      createdEntry.ID,
-				Status:       model.StatusNew,
-				IntervalDays: 0,
-				EaseFactor:   2.5, // Дефолтное значение для SM-2
-			}
-			if _, err := s.repos.Cards.Create(ctx, card); err != nil {
-				return err
-			}
-		}
-
-		// G. Audit Log (Создание записи)
-		// Используем JSON для сохранения деталей (снапшот не делаем, просто факт создания)
-		audit := &model.AuditRecord{
-			EntityType: model.EntityEntry,
-			EntityID:   &createdEntry.ID,
-			Action:     model.ActionCreate,
-			Changes:    model.JSON{"text": createdEntry.Text},
-		}
-		if _, err := s.repos.Audit.Create(ctx, audit); err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		// Маппинг ошибок БД на доменные ошибки, если нужно уточнить
-		if database.IsDuplicateError(err) {
-			return nil, types.ErrAlreadyExists
-		}
+	if err := validateCreateWordInput(input); err != nil {
 		return nil, err
 	}
 
-	return createdEntry, nil
+	textRaw := strings.TrimSpace(input.Text)
+	textNorm := normalizeText(textRaw)
+
+	entry, err := s.createWordTx(ctx, input, textRaw, textNorm)
+	if err != nil {
+		return nil, wrapServiceError(err, "create word")
+	}
+
+	return entry, nil
 }
 
-// Helper для нормализации
-func normalizeText(s string) string {
-	return strings.ToLower(strings.TrimSpace(s))
+// UpdateWord обновляет слово и все связанные сущности атомарно.
+// Метод выполняет валидацию входных данных, проверку существования записи,
+// обновление основной записи и пересоздание всех связанных сущностей.
+func (s *Service) UpdateWord(ctx context.Context, input UpdateWordInput) (*model.DictionaryEntry, error) {
+	if err := validateUpdateWordInput(input); err != nil {
+		return nil, err
+	}
+
+	entryID, err := parseEntryID(input.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	entry, err := s.updateWordTx(ctx, input, entryID)
+	if err != nil {
+		return nil, wrapServiceError(err, "update word")
+	}
+
+	return entry, nil
+}
+
+// DeleteWord удаляет слово и все связанные сущности атомарно.
+// Метод выполняет валидацию ID, проверку существования записи,
+// удаление записи и создание аудит-лога.
+func (s *Service) DeleteWord(ctx context.Context, input DeleteWordInput) error {
+	entryID, err := parseEntryID(input.ID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.deleteWordTx(ctx, entryID); err != nil {
+		return wrapServiceError(err, "delete word")
+	}
+
+	return nil
+}
+
+// AddSense добавляет новый смысл к записи словаря без удаления существующих.
+// Метод создает смысл и связанные с ним переводы и примеры.
+func (s *Service) AddSense(ctx context.Context, input AddSenseInput) (*model.Sense, error) {
+	if err := validateAddSenseInput(input); err != nil {
+		return nil, err
+	}
+
+	entryID, err := parseEntryID(input.EntryID)
+	if err != nil {
+		return nil, err
+	}
+
+	sense, err := s.addSenseTx(ctx, input, entryID)
+	if err != nil {
+		return nil, wrapServiceError(err, "add sense")
+	}
+
+	return sense, nil
+}
+
+// AddExamples добавляет новые примеры к существующему смыслу без удаления существующих.
+func (s *Service) AddExamples(ctx context.Context, input AddExamplesInput) error {
+	if err := validateAddExamplesInput(input); err != nil {
+		return err
+	}
+
+	senseID, err := parseEntryID(input.SenseID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.addExamplesTx(ctx, input, senseID); err != nil {
+		return wrapServiceError(err, "add examples")
+	}
+
+	return nil
+}
+
+// AddTranslations добавляет новые переводы к существующему смыслу без удаления существующих.
+func (s *Service) AddTranslations(ctx context.Context, input AddTranslationsInput) error {
+	if err := validateAddTranslationsInput(input); err != nil {
+		return err
+	}
+
+	senseID, err := parseEntryID(input.SenseID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.addTranslationsTx(ctx, input, senseID); err != nil {
+		return wrapServiceError(err, "add translations")
+	}
+
+	return nil
+}
+
+// AddImages добавляет новые изображения к записи словаря без удаления существующих.
+func (s *Service) AddImages(ctx context.Context, input AddImagesInput) error {
+	if err := validateAddImagesInput(input); err != nil {
+		return err
+	}
+
+	entryID, err := parseEntryID(input.EntryID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.addImagesTx(ctx, input, entryID); err != nil {
+		return wrapServiceError(err, "add images")
+	}
+
+	return nil
+}
+
+// AddPronunciations добавляет новые произношения к записи словаря без удаления существующих.
+func (s *Service) AddPronunciations(ctx context.Context, input AddPronunciationsInput) error {
+	if err := validateAddPronunciationsInput(input); err != nil {
+		return err
+	}
+
+	entryID, err := parseEntryID(input.EntryID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.addPronunciationsTx(ctx, input, entryID); err != nil {
+		return wrapServiceError(err, "add pronunciations")
+	}
+
+	return nil
+}
+
+// DeleteSense удаляет смысл и все связанные с ним переводы и примеры (CASCADE).
+func (s *Service) DeleteSense(ctx context.Context, input DeleteSenseInput) error {
+	if err := validateDeleteSenseInput(input); err != nil {
+		return err
+	}
+
+	senseID, err := parseEntryID(input.ID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.deleteSenseTx(ctx, senseID); err != nil {
+		return wrapServiceError(err, "delete sense")
+	}
+
+	return nil
+}
+
+// DeleteExample удаляет пример.
+func (s *Service) DeleteExample(ctx context.Context, input DeleteExampleInput) error {
+	if err := validateDeleteExampleInput(input); err != nil {
+		return err
+	}
+
+	exampleID, err := parseEntryID(input.ID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.deleteExampleTx(ctx, exampleID); err != nil {
+		return wrapServiceError(err, "delete example")
+	}
+
+	return nil
+}
+
+// DeleteTranslation удаляет перевод.
+func (s *Service) DeleteTranslation(ctx context.Context, input DeleteTranslationInput) error {
+	if err := validateDeleteTranslationInput(input); err != nil {
+		return err
+	}
+
+	translationID, err := parseEntryID(input.ID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.deleteTranslationTx(ctx, translationID); err != nil {
+		return wrapServiceError(err, "delete translation")
+	}
+
+	return nil
+}
+
+// DeleteImage удаляет изображение.
+func (s *Service) DeleteImage(ctx context.Context, input DeleteImageInput) error {
+	if err := validateDeleteImageInput(input); err != nil {
+		return err
+	}
+
+	imageID, err := parseEntryID(input.ID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.deleteImageTx(ctx, imageID); err != nil {
+		return wrapServiceError(err, "delete image")
+	}
+
+	return nil
+}
+
+// DeletePronunciation удаляет произношение.
+func (s *Service) DeletePronunciation(ctx context.Context, input DeletePronunciationInput) error {
+	if err := validateDeletePronunciationInput(input); err != nil {
+		return err
+	}
+
+	pronunciationID, err := parseEntryID(input.ID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.deletePronunciationTx(ctx, pronunciationID); err != nil {
+		return wrapServiceError(err, "delete pronunciation")
+	}
+
+	return nil
 }

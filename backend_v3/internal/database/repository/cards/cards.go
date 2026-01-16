@@ -225,11 +225,6 @@ func (r *CardRepository) Update(ctx context.Context, id uuid.UUID, card *model.C
 //   - nextReviewAt: время следующего повторения (может быть nil для MASTERED)
 //   - intervalDays: интервал в днях (≥0)
 //   - easeFactor: фактор легкости (≥1.3)
-//
-// Производительность:
-//   - Обновляет только необходимые поля (не все поля карточки)
-//   - Использует RETURNING для получения обновлённой записи
-//   - Рекомендуется использовать в транзакциях для атомарности
 func (r *CardRepository) UpdateSRSFields(
 	ctx context.Context,
 	id uuid.UUID,
@@ -337,4 +332,14 @@ func (r *ReviewLogRepository) ListByCardID(ctx context.Context, cardID uuid.UUID
 	}
 
 	return r.List(ctx, query)
+}
+
+// ListByEntryIDs возвращает список карточек для указанных entryIDs.
+// Используется для DataLoaders.
+func (r *CardRepository) ListByEntryIDs(ctx context.Context, entryIDs []uuid.UUID) ([]model.Card, error) {
+	if len(entryIDs) == 0 {
+		return []model.Card{}, nil
+	}
+	// Используем базовый метод, указывая колонку entry_id
+	return r.ListByUUIDs(ctx, schema.Cards.EntryID.Bare(), entryIDs)
 }

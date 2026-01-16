@@ -6,17 +6,46 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/heartmarshall/my-english/internal/service/dictionary"
+	"github.com/heartmarshall/my-english/internal/service/types"
 	ctx_pkg "github.com/heartmarshall/my-english/pkg/context"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 )
 
+const (
+	// ProviderTimeout — таймаут для запросов к провайдерам подсказок.
+	ProviderTimeout = 5 * time.Second
+)
+
+// Result — унифицированный ответ от провайдера.
+type Result struct {
+	SourceSlug     string
+	SourceName     string
+	Senses         []dictionary.SenseInput // Используем те же Input структуры, что и для создания слова
+	Images         []dictionary.ImageInput
+	Pronunciations []dictionary.PronunciationInput
+}
+
+// Provider — интерфейс внешнего источника данных для подсказок.
+// Интерфейс объявлен здесь, так как используется в этом пакете.
+type Provider interface {
+	// Slug возвращает уникальный идентификатор провайдера ("freedict", "openai").
+	Slug() string
+	// Name возвращает человекочитаемое название.
+	Name() string
+	// Fetch запрашивает данные о слове.
+	Fetch(ctx context.Context, text string) (*Result, error)
+}
+
+// Service реализует бизнес-логику для получения подсказок из внешних источников.
+// Использует паттерны Scatter-Gather и Singleflight для оптимизации запросов.
 type Service struct {
 	providers map[string]Provider
 	sf        singleflight.Group
 }
 
-// NewService создает сервис и регистрирует провайдеров.
+// NewService создает новый экземпляр сервиса подсказок и регистрирует провайдеров.
 func NewService(providers ...Provider) *Service {
 	pMap := make(map[string]Provider, len(providers))
 	for _, p := range providers {
@@ -27,9 +56,15 @@ func NewService(providers ...Provider) *Service {
 	}
 }
 
-// FetchSuggestions получает подсказки из указанных источников.
-// Реализует паттерн Scatter-Gather.
+// FetchSuggestions получает подсказки из указанных источников параллельно.
+// Реализует паттерн Scatter-Gather для параллельных запросов к нескольким провайдерам.
+// Использует Singleflight для дедупликации идентичных запросов.
+// Ошибки отдельных провайдеров логируются, но не прерывают выполнение других запросов.
 func (s *Service) FetchSuggestions(ctx context.Context, text string, sources []string) ([]Result, error) {
+	if text == "" {
+		return nil, types.NewValidationError("text", "cannot be empty")
+	}
+
 	// 1. Дедупликация запросов (Singleflight)
 	// Ключ зависит от текста и списка источников.
 	key := fmt.Sprintf("%s:%v", text, sources)
@@ -40,10 +75,15 @@ func (s *Service) FetchSuggestions(ctx context.Context, text string, sources []s
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fetch suggestions: %w", err)
 	}
 
-	return val.([]Result), nil
+	results, ok := val.([]Result)
+	if !ok {
+		return nil, fmt.Errorf("unexpected result type from singleflight")
+	}
+
+	return results, nil
 }
 
 // fetchInternal выполняет реальную логику запросов.
@@ -77,7 +117,7 @@ func (s *Service) fetchInternal(ctx context.Context, text string, sources []stri
 		g.Go(func() error {
 			// У каждого провайдера должен быть свой таймаут, чтобы не вешать общий запрос надолго.
 			// (Обычно это делается внутри клиента, но safety net здесь не помешает).
-			childCtx, cancel := context.WithTimeout(gCtx, 5*time.Second)
+			childCtx, cancel := context.WithTimeout(gCtx, ProviderTimeout)
 			defer cancel()
 
 			start := time.Now()

@@ -46,6 +46,7 @@ type CardRepository interface {
 	GetByIDForUpdate(ctx context.Context, id uuid.UUID) (*model.Card, error)
 	GetDueCards(ctx context.Context, now time.Time, limit int) ([]model.Card, error)
 	GetDashboardStats(ctx context.Context) (*cards.DashboardStats, error)
+	ListByEntryIDs(ctx context.Context, entryIDs []uuid.UUID) ([]model.Card, error)
 
 	// Пишущие операции
 	Create(ctx context.Context, card *model.Card) (*model.Card, error)

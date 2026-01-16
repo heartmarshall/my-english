@@ -99,6 +99,7 @@ type SuggestedPronunciation {
 type DictionaryEntry {
   id: UUID!
   text: String!              # Оригинальное написание (например "London")
+  textNormalized: String!    # Нормализованное значение
   
   # Описание сущности
   pronunciations: [Pronunciation!]!
@@ -119,6 +120,7 @@ type DictionaryEntry {
 
 type Sense {
   id: UUID!
+  entryId: UUID!
   definition: String      # Может быть пустым, если есть только перевод
   partOfSpeech: PartOfSpeech
   sourceSlug: String      # Откуда взято определение ("freedict", "user")
@@ -127,6 +129,15 @@ type Sense {
   examples: [Example!]!
   cefrLevel: String
   relations: [SenseRelation!]!
+  
+  createdAt: Time!
+}
+
+# Определение типа связи (MISSING PART)
+type SenseRelation {
+  id: UUID!
+  targetEntryId: UUID!
+  type: RelationType!
 }
 
 # Пока что не используется. В будущем стоит добавить связи между словами
@@ -140,19 +151,23 @@ enum RelationType {
 
 type Translation {
   id: UUID!
+  senseId: UUID!
   text: String!
   sourceSlug: String      # "google-translate", "user"
 }
 
 type Example {
   id: UUID!
+  senseId: UUID!
   sentence: String!
   translation: String
   sourceSlug: String      # "openai", "inbox"
+  createdAt: Time!
 }
 
 type Image {
   id: UUID!
+  entryId: UUID!
   url: String!
   caption: String
   sourceSlug: String      # "unsplash", "user-upload"
@@ -160,6 +175,7 @@ type Image {
 
 type Pronunciation {
   id: UUID!
+  entryId: UUID!
   audioUrl: String!
   transcription: String
   region: String
@@ -187,32 +203,22 @@ type Card {
   id: UUID!
   entryId: UUID!
   # Текущее состояние SRS
-  stats: SRSState!
-  hints: [Hint!]!
+  status: LearningStatus!
+  nextReviewAt: Time      # Когда показывать снова
+  intervalDays: Int!      # Текущий интервал в днях
+  easeFactor: Float!      # Множитель легкости (SM-2)
   
   # История ответов (для графиков)
   reviewHistory(limit: Int = 10): [ReviewLog!]!
-}
-
-type Hint {
-  id: UUID!
-  text: String!
+  
   createdAt: Time!
   updatedAt: Time!
 }
 
-type SRSState {
-  status: LearningStatus!
-  nextReviewAt: Time      # Когда показывать снова
-  interval: Int           # Текущий интервал в днях
-  easeFactor: Float       # Множитель легкости (SM-2)
-  stability: Float        # Стабильность (FSRS)
-
-}
-
 type ReviewLog {
-  id: ID!
-  grade: Int!             # 1-5
+  id: UUID!
+  cardId: UUID!
+  grade: ReviewGrade!     # 1-5
   durationMs: Int
   reviewedAt: Time!
 }
@@ -234,7 +240,6 @@ type InboxItem {
 
 input WordFilter {
   search: String          # Нечеткий поиск
-  tags: [String!]
   hasCard: Boolean        # true: только те, что учу; false: только справочник
   partOfSpeech: PartOfSpeech
   
@@ -312,14 +317,6 @@ input UpdateWordInput {
   senses: [SenseInput!] 
 }
 
-input CreateExampleInput {
-  senseId: UUID!
-  sentenceEn: String!
-  sentenceRu: String
-  translation: String
-  sourceSlug: String
-}
-
 # ==============================================================================
 # 7. ROOT OPERATIONS
 # ==============================================================================
@@ -376,7 +373,6 @@ type Mutation {
   Удаляет InboxItem при успехе.
   """
   convertInboxToWord(inboxId: UUID!, input: CreateWordInput!): DictionaryEntry!
-  converInboxToExample(inboxId: UUID!, input: CreateExampleInput!): Example!
 
 
   # --- Study Ops ---
@@ -392,17 +388,19 @@ type Mutation {
 
 type DashboardStats {
   totalWords: Int!
-  activeCards: Int!
+  totalCards: Int!
+  newCards: Int!
+  learningCards: Int!
+  reviewCards: Int!
   masteredCards: Int!
   dueToday: Int!
 }
 
 enum ReviewGrade {
-  ONE
-  TWO
-  THREE
-  FOUR
-  FIVE
+  AGAIN
+  HARD
+  GOOD
+  EASY
 }
 
 type ReviewResult {
