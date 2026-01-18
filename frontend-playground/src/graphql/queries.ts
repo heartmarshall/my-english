@@ -1,367 +1,327 @@
-import { gql } from '@apollo/client'
+import { gql } from '@apollo/client';
 
-// ============================================
+// ==============================================================================
 // QUERIES
-// ============================================
+// ==============================================================================
 
-export const GET_WORDS = gql`
-  query GetWords($filter: WordFilter, $first: Int, $after: String) {
-    words(filter: $filter, first: $first, after: $after) {
-      edges {
-        node {
-          id
-          text
-          transcription
-          audioUrl
-          frequencyRank
-          createdAt
-          forms {
-            id
-            formText
-            formType
-          }
-          meanings {
-            id
-            partOfSpeech
-            definitionEn
-            translationRu
-            cefrLevel
-            imageUrl
-            status
-            nextReviewAt
-            reviewCount
-            examples {
-              id
-              sentenceEn
-              sentenceRu
-              sourceName
-            }
-            tags {
-              id
-              name
-            }
-            synonymsAntonyms {
-              id
-              relatedMeaningId
-              relationType
-            }
-          }
-        }
-        cursor
-      }
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-      totalCount
+export const GET_DASHBOARD_STATS = gql`
+  query GetDashboardStats {
+    dashboardStats {
+      totalWords
+      totalCards
+      newCards
+      learningCards
+      reviewCards
+      masteredCards
+      dueToday
     }
   }
-`
+`;
 
-export const GET_WORD = gql`
-  query GetWord($id: ID!) {
-    word(id: $id) {
+export const GET_DICTIONARY = gql`
+  query GetDictionary($filter: WordFilter) {
+    dictionary(filter: $filter) {
       id
       text
-      transcription
-      audioUrl
-      frequencyRank
-      createdAt
-      forms {
+      textNormalized
+      cardEnabled
+      card {
         id
-        formText
-        formType
-      }
-      meanings {
-        id
-        wordId
-        partOfSpeech
-        definitionEn
-        translationRu
-        cefrLevel
-        imageUrl
         status
         nextReviewAt
-        reviewCount
+        intervalDays
+        easeFactor
+      }
+      senses {
+        id
+        definition
+        partOfSpeech
+        translations {
+          id
+          text
+        }
         examples {
           id
-          sentenceEn
-          sentenceRu
-          sourceName
+          sentence
+          translation
         }
-        tags {
+      }
+      images {
+        id
+        url
+        caption
+      }
+      pronunciations {
+        id
+        audioUrl
+        transcription
+        region
+      }
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const GET_DICTIONARY_ENTRY = gql`
+  query GetDictionaryEntry($id: UUID!) {
+    dictionaryEntry(id: $id) {
+      id
+      text
+      textNormalized
+      cardEnabled
+      card {
+        id
+        status
+        nextReviewAt
+        intervalDays
+        easeFactor
+        reviewHistory(limit: 10) {
           id
-          name
+          grade
+          durationMs
+          reviewedAt
         }
-        synonymsAntonyms {
+      }
+      senses {
+        id
+        definition
+        partOfSpeech
+        sourceSlug
+        translations {
           id
-          relatedMeaningId
-          relationType
+          text
+          sourceSlug
         }
+        examples {
+          id
+          sentence
+          translation
+          sourceSlug
+          createdAt
+        }
+      }
+      images {
+        id
+        url
+        caption
+        sourceSlug
+      }
+      pronunciations {
+        id
+        audioUrl
+        transcription
+        region
+        sourceSlug
+      }
+      auditLog {
+        id
+        entityType
+        action
+        changes
+        createdAt
+      }
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const GET_STUDY_QUEUE = gql`
+  query GetStudyQueue($limit: Int) {
+    studyQueue(limit: $limit) {
+      id
+      text
+      textNormalized
+      card {
+        id
+        status
+        nextReviewAt
+        intervalDays
+        easeFactor
+      }
+      senses {
+        id
+        definition
+        partOfSpeech
+        translations {
+          id
+          text
+        }
+        examples {
+          id
+          sentence
+          translation
+        }
+      }
+      images {
+        id
+        url
+        caption
+      }
+      pronunciations {
+        id
+        audioUrl
+        transcription
+        region
       }
     }
   }
-`
+`;
 
 export const GET_INBOX_ITEMS = gql`
   query GetInboxItems {
     inboxItems {
       id
       text
-      sourceContext
+      context
       createdAt
     }
   }
-`
+`;
 
-export const GET_SUGGEST = gql`
-  query Suggest($query: String!) {
-    suggest(query: $query) {
-      text
-      transcription
-      translations
-      definition  # <--- Добавили это поле
-      origin
-      existingWordId
-    }
-  }
-`
-
-export const GET_STUDY_QUEUE = gql`
-  query GetStudyQueue($limit: Int) {
-    studyQueue(limit: $limit) {
-      id
-      wordId
-      partOfSpeech
-      definitionEn
-      translationRu
-      cefrLevel
-      imageUrl
-      status
-      nextReviewAt
-      reviewCount
-      examples {
-        id
-        sentenceEn
-        sentenceRu
-        sourceName
+export const FETCH_SUGGESTIONS = gql`
+  query FetchSuggestions($text: String!, $sources: [String!]!) {
+    fetchSuggestions(text: $text, sources: $sources) {
+      sourceSlug
+      sourceName
+      senses {
+        definition
+        partOfSpeech
+        translations
+        examples {
+          sentence
+          translation
+        }
       }
-      tags {
-        id
-        name
+      images {
+        url
+        thumbnailUrl
+        caption
       }
-      synonymsAntonyms {
-        id
-        relatedMeaningId
-        relationType
+      pronunciations {
+        audioUrl
+        transcription
+        region
       }
     }
   }
-`
+`;
 
-export const GET_STATS = gql`
-  query GetStats {
-    stats {
-      totalWords
-      masteredCount
-      learningCount
-      dueForReviewCount
-    }
-  }
-`
-
-// ============================================
+// ==============================================================================
 // MUTATIONS
-// ============================================
+// ==============================================================================
 
 export const CREATE_WORD = gql`
   mutation CreateWord($input: CreateWordInput!) {
     createWord(input: $input) {
-      word {
-        id
-        text
-        transcription
-        audioUrl
-        frequencyRank
-        forms {
-          id
-          formText
-          formType
-        }
-        meanings {
-          id
-          partOfSpeech
-          definitionEn
-          translationRu
-          cefrLevel
-          imageUrl
-          status
-          nextReviewAt
-          reviewCount
-          examples {
-            id
-            sentenceEn
-            sentenceRu
-            sourceName
-          }
-          tags {
-            id
-            name
-          }
-          synonymsAntonyms {
-            id
-            relatedMeaningId
-            relationType
-          }
-        }
-      }
-    }
-  }
-`
-
-export const UPDATE_WORD = gql`
-  mutation UpdateWord($id: ID!, $input: CreateWordInput!) {
-    updateWord(id: $id, input: $input) {
-      word {
-        id
-        text
-        transcription
-        audioUrl
-        frequencyRank
-        forms {
-          id
-          formText
-          formType
-        }
-        meanings {
-          id
-          partOfSpeech
-          definitionEn
-          translationRu
-          cefrLevel
-          imageUrl
-          status
-          nextReviewAt
-          reviewCount
-          examples {
-            id
-            sentenceEn
-            sentenceRu
-            sourceName
-          }
-          tags {
-            id
-            name
-          }
-          synonymsAntonyms {
-            id
-            relatedMeaningId
-            relationType
-          }
-        }
-      }
-    }
-  }
-`
-
-export const DELETE_WORD = gql`
-  mutation DeleteWord($id: ID!) {
-    deleteWord(id: $id)
-  }
-`
-
-export const ADD_TO_INBOX = gql`
-  mutation AddToInbox($text: String!, $sourceContext: String) {
-    addToInbox(text: $text, sourceContext: $sourceContext) {
       id
       text
-      sourceContext
+      textNormalized
+      cardEnabled
+      card {
+        id
+        status
+        nextReviewAt
+      }
+      senses {
+        id
+        definition
+        partOfSpeech
+        translations {
+          id
+          text
+        }
+      }
       createdAt
     }
   }
-`
+`;
+
+export const UPDATE_WORD = gql`
+  mutation UpdateWord($id: UUID!, $input: UpdateWordInput!) {
+    updateWord(id: $id, input: $input) {
+      id
+      text
+      textNormalized
+      senses {
+        id
+        definition
+        partOfSpeech
+        translations {
+          id
+          text
+        }
+        examples {
+          id
+          sentence
+          translation
+        }
+      }
+      updatedAt
+    }
+  }
+`;
+
+export const DELETE_WORD = gql`
+  mutation DeleteWord($id: UUID!) {
+    deleteWord(id: $id)
+  }
+`;
+
+export const ADD_TO_INBOX = gql`
+  mutation AddToInbox($text: String!, $context: String) {
+    addToInbox(text: $text, context: $context) {
+      id
+      text
+      context
+      createdAt
+    }
+  }
+`;
 
 export const DELETE_INBOX_ITEM = gql`
-  mutation DeleteInboxItem($id: ID!) {
+  mutation DeleteInboxItem($id: UUID!) {
     deleteInboxItem(id: $id)
   }
-`
+`;
 
-export const CONVERT_INBOX_ITEM = gql`
-  mutation ConvertInboxItem($inboxId: ID!, $input: CreateWordInput!) {
-    convertInboxItem(inboxId: $inboxId, input: $input) {
-      word {
+export const CONVERT_INBOX_TO_WORD = gql`
+  mutation ConvertInboxToWord($inboxId: UUID!, $input: CreateWordInput!) {
+    convertInboxToWord(inboxId: $inboxId, input: $input) {
+      id
+      text
+      textNormalized
+      cardEnabled
+      senses {
+        id
+        definition
+        translations {
+          id
+          text
+        }
+      }
+      createdAt
+    }
+  }
+`;
+
+export const REVIEW_CARD = gql`
+  mutation ReviewCard($cardId: UUID!, $grade: ReviewGrade!, $timeTakenMs: Int) {
+    reviewCard(cardId: $cardId, grade: $grade, timeTakenMs: $timeTakenMs) {
+      entry {
         id
         text
-        transcription
-        audioUrl
-        frequencyRank
-        forms {
+        card {
           id
-          formText
-          formType
-        }
-        meanings {
-          id
-          partOfSpeech
-          definitionEn
-          translationRu
-          cefrLevel
-          imageUrl
           status
           nextReviewAt
-          reviewCount
-          examples {
-            id
-            sentenceEn
-            sentenceRu
-            sourceName
-          }
-          tags {
-            id
-            name
-          }
-          synonymsAntonyms {
-            id
-            relatedMeaningId
-            relationType
-          }
+          intervalDays
+          easeFactor
         }
       }
-    }
-  }
-`
-
-export const REVIEW_MEANING = gql`
-  mutation ReviewMeaning($meaningId: ID!, $grade: Int!) {
-    reviewMeaning(meaningId: $meaningId, grade: $grade) {
-      id
-      wordId
-      partOfSpeech
-      definitionEn
-      translationRu
-      cefrLevel
-      imageUrl
-      status
       nextReviewAt
-      reviewCount
-      examples {
-        id
-        sentenceEn
-        sentenceRu
-        sourceName
-      }
-      tags {
-        id
-        name
-      }
-      synonymsAntonyms {
-        id
-        relatedMeaningId
-        relationType
-      }
     }
   }
-`
-
+`;
 

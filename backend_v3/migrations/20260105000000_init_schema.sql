@@ -262,13 +262,7 @@ CREATE INDEX ix_audit_records_created_at ON audit_records(created_at);
 -- ============================================================================
 -- TRIGGERS
 -- ============================================================================
-CREATE OR REPLACE FUNCTION touch_updated_at()
-RETURNS trigger AS $$
-BEGIN
-NEW.updated_at = now();
-RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION touch_updated_at() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN NEW.updated_at = now(); RETURN NEW; END;';
 
 CREATE TRIGGER trg_dictionary_entries_updated
 BEFORE UPDATE ON dictionary_entries

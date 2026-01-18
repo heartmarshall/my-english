@@ -405,12 +405,9 @@ func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 // Sense returns SenseResolver implementation.
 func (r *Resolver) Sense() SenseResolver { return &senseResolver{r} }
 
-// Определения структур резолверов
 type auditRecordResolver struct{ *Resolver }
 type cardResolver struct{ *Resolver }
 type dictionaryEntryResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type senseResolver struct{ *Resolver }
-
-// --- Реализация AuditRecordResolver (так как gqlgen сгенерировал его) ---

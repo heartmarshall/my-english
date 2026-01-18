@@ -13,9 +13,12 @@ export default defineConfig({
       "@graphql-typed-document-node/core": path.resolve(__dirname, "./src/gql/typed-document-node-shim.ts"),
     },
   },
+  optimizeDeps: {
+    include: ['@apollo/client', '@apollo/client/react', 'graphql'],
+  },
   server: {
     proxy: {
-      '/graphql': {
+      '/query': {
         target: 'http://localhost:8080',
         changeOrigin: true,
       },

@@ -302,7 +302,15 @@ func SecurityHeadersMiddleware() func(http.Handler) http.Handler {
 			}
 
 			// Content Security Policy
-			w.Header().Set(headerContentSecurityPolicy, contentSecurityPolicyDefault)
+			// Для GraphQL Playground используем более мягкий CSP, чтобы разрешить внешние скрипты
+			if r.URL.Path == "/" {
+				// CSP для GraphQL Playground: разрешаем внешние скрипты и стили
+				csp := "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self' data: https://cdn.jsdelivr.net;"
+				w.Header().Set(headerContentSecurityPolicy, csp)
+			} else {
+				// Строгий CSP для всех остальных путей
+				w.Header().Set(headerContentSecurityPolicy, contentSecurityPolicyDefault)
+			}
 
 			next.ServeHTTP(w, r)
 		})

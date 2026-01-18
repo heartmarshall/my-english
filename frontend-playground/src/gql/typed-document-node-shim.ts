@@ -1,15 +1,7 @@
-// Shim for @graphql-typed-document-node/core
-// This package is types-only and has no runtime code
-// We export type aliases that match the expected interface
-import type { DocumentNode } from 'graphql';
+// Runtime shim for @graphql-typed-document-node/core
+// This is a placeholder until types are generated
+export const gql = (strings: TemplateStringsArray, ...values: any[]) => {
+  return strings.reduce((acc, str, i) => acc + str + (values[i] || ''), '');
+};
 
-// TypedDocumentNode is just a type alias for DocumentNode
-export type TypedDocumentNode<TResult = any, _TVariables = Record<string, any>> = DocumentNode;
-
-// Additional types exported by the package
-export type ResultOf<T> = T extends TypedDocumentNode<infer TResult, any> ? TResult : never;
-export type DocumentTypeDecoration<TResult, TVariables> = TypedDocumentNode<TResult, TVariables>;
-
-// Re-export DocumentNode type for type assertions
-export type { DocumentNode };
 
